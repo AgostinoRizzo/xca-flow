@@ -1,11 +1,14 @@
 #include "mpui.h"
 #include "glutils.hpp"
+
 #include <stdio.h>
+#include <thread>
+#include <mutex>
 
 #ifdef __APPLE_CC__
 #include <GLUT/glut.h>
 #else
-#include <GL/glut.h>
+#include <GL/freeglut.h>
 #endif
 
 #define GET3D(M, rows, columns, i, j, k) \
@@ -40,11 +43,13 @@ float zoom      = 10.0f;
 float resize_f  = 1.0f;
 int   mouseDown = 0;
 
-double *displaybuff      = nullptr;
-int     buff_xsize       = 0;
-int     buff_ysize       = 0;
-int     buff_zsize       = 0;
-double  filter_threshold = 0.0f;
+double    *displaybuff      = nullptr;
+int        buff_xsize       = 0;
+int        buff_ysize       = 0;
+int        buff_zsize       = 0;
+double     filter_threshold = 0.0f;
+bool       onexit           = false;
+std::mutex glock;
 
 const int DRAW_CELL_PATTERN[][4][3] =
 {
@@ -68,9 +73,13 @@ const float CELL_SHADOW[] =
 
 void drawCell( int i, int j, int k, Color color, bool hiddenNeHood[] )
 {
-	const float offset_i = CELLSIZE*i    + origin_x;
-	const float offset_j = CELLSIZE*(-k) + origin_y;
-	const float offset_k = CELLSIZE*j    + origin_z;
+	float offset_i = CELLSIZE*i    + origin_x;
+	float offset_j = CELLSIZE*(-k) + origin_y;
+	float offset_k = CELLSIZE*j    + origin_z;
+
+	if ( !(buff_xsize & 1) ) offset_i += CELLRAD;
+	if ( !(buff_ysize & 1) ) offset_k += CELLRAD;
+	if ( !(buff_zsize & 1) ) offset_j -= CELLRAD;
 
 	glTranslatef(offset_i, offset_j, offset_k);
 	glBegin(GL_QUADS);
@@ -153,49 +162,56 @@ void display(void)
 	glRotatef(xrot, 1.0f, 0.0f, 0.0f);
 	glRotatef(yrot, 0.0f, 1.0f, 0.0f);
 	
-	int ibegin = -buff_xsize / 2;
-	int iend   = -ibegin;
+	glock.lock();
 
-	int jbegin = -buff_ysize / 2;
-	int jend   = -ibegin;
-
-	int kbegin = -buff_zsize / 2;
-	int kend   = -kbegin;
-
-	if ( !(buff_xsize & 1) ) --iend;
-	if ( !(buff_ysize & 1) ) --jend;
-	if ( !(buff_zsize & 1) ) --kend;
-
-	for ( int i=ibegin; i<=iend; ++i )
-	for ( int j=jbegin; j<=jend; ++j )
-	for ( int k=kbegin; k<=kend; ++k )
+	if ( displaybuff != nullptr )
 	{
-		int i_cell=i-ibegin, j_cell=j-jbegin, k_cell=k-kbegin;
+		int ibegin = -buff_xsize / 2;
+		int iend   = -ibegin;
 
-		double cellValue = GET3D(displaybuff, buff_xsize, buff_ysize, i_cell, j_cell, k_cell);
-		if ( hiddenCell(cellValue) )
-			continue;
-		
-		bool hiddenNeHood[] =
+		int jbegin = -buff_ysize / 2;
+		int jend   = -ibegin;
+
+		int kbegin = -buff_zsize / 2;
+		int kend   = -kbegin;
+
+		if ( !(buff_xsize & 1) ) --iend;
+		if ( !(buff_ysize & 1) ) --jend;
+		if ( !(buff_zsize & 1) ) --kend;
+
+		for ( int i=ibegin; i<=iend; ++i )
+		for ( int j=jbegin; j<=jend; ++j )
+		for ( int k=kbegin; k<=kend; ++k )
 		{
-			hiddenCell( i_cell, j_cell+1, k_cell ),  // front
-			hiddenCell( i_cell, j_cell-1, k_cell ),  // back
-			hiddenCell( i_cell+1, j_cell, k_cell ),  // right
-			hiddenCell( i_cell-1, j_cell, k_cell ),  // left
-			hiddenCell( i_cell, j_cell, k_cell-1 ),  // top
-			hiddenCell( i_cell, j_cell, k_cell+1 )   // bottom
-		};
+			int i_cell=i-ibegin, j_cell=j-jbegin, k_cell=k-kbegin;
 
-		cellValue += 734.0f;
-		double percCellValue = cellValue / 6334.0f;
+			double cellValue = GET3D(displaybuff, buff_xsize, buff_ysize, i_cell, j_cell, k_cell);
+			if ( hiddenCell(cellValue) )
+				continue;
+			
+			bool hiddenNeHood[] =
+			{
+				hiddenCell( i_cell, j_cell+1, k_cell ),  // front
+				hiddenCell( i_cell, j_cell-1, k_cell ),  // back
+				hiddenCell( i_cell+1, j_cell, k_cell ),  // right
+				hiddenCell( i_cell-1, j_cell, k_cell ),  // left
+				hiddenCell( i_cell, j_cell, k_cell-1 ),  // top
+				hiddenCell( i_cell, j_cell, k_cell+1 )   // bottom
+			};
 
-		ColorRange crange;
-		Color color = crange.get(percCellValue);
-		
-		drawCell(i, j, k, color, hiddenNeHood);
+			cellValue += 734.0f;
+			double percCellValue = cellValue / 6334.0f;
+
+			ColorRange crange;
+			Color color = crange.get(percCellValue);
+			
+			drawCell(i, j, k, color, hiddenNeHood);
+		}
 	}
 
 	drawLimits();
+
+	glock.unlock();
 
 	glFlush();
 	glutSwapBuffers();
@@ -249,7 +265,9 @@ void keyboard(unsigned char key, int x, int y)
 		break;
 	}
 
+	glock.lock();
 	glutPostRedisplay();
+	glock.unlock();
 }
 
 void mouse(int button, int state, int x, int y)
@@ -269,14 +287,24 @@ void mouseMotion(int x, int y)
 	{
 		yrot = x - xdiff;
 		xrot = y + ydiff;
+		glock.lock();
 		glutPostRedisplay();
+		glock.unlock();
 	}
+}
+
+void hubMainLoop()
+{
+	glutMainLoop();
+	glock.lock();
+	onexit = true;
+	glock.unlock();
 }
 
 namespace mpui {
 
-int
-MPUI_Hub_init()
+void
+MPUI_Hub_init( std::thread *&loopth )
 {
 	int argc = 0; char *argv[0];
 	glutInit(&argc, argv);
@@ -298,21 +326,74 @@ MPUI_Hub_init()
 	glEnable(GL_DEPTH_TEST);
 	glClearDepth(1.0f);
 
-	return 0;
+	glutSetOption( GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS );
+
+	loopth = new std::thread( hubMainLoop );
+}
+
+void
+MPUI_Hub_finalize( std::thread *&loopth )
+{
+	loopth->join();
+	delete loopth;
+	loopth = nullptr;
+}
+
+void
+MPUI_Hub_setWSize( int xsize, int ysize, int zsize )
+{
+	glock.lock();
+	if ( onexit )
+	{
+		glock.unlock();
+		return;
+	}
+	buff_xsize = xsize;
+	buff_ysize = ysize;
+	buff_zsize = zsize;
+	glutPostRedisplay();
+	glock.unlock();
 }
 
 void
 MPUI_Hub_setBuffer( double *buff, int xsize, int ysize, int zsize )
 {
+	glock.lock();
+	if ( onexit )
+	{
+		glock.unlock();
+		return;
+	}
 	displaybuff = buff;
 	buff_xsize = xsize;
 	buff_ysize = ysize;
 	buff_zsize = zsize;
+	glutPostRedisplay();
+	glock.unlock();
 }
 
 void
-MPUI_Hub_mainloop() { glutMainLoop(); }
-void
-MPUI_Hub_filter( double threshold ) { filter_threshold = threshold; }
+MPUI_Hub_filter( double threshold )
+{
+	glock.lock();
+	if ( onexit )
+	{
+		glock.unlock();
+		return;
+	}
+	filter_threshold = threshold;
+	glutPostRedisplay();
+	glock.unlock();
+}
+
+bool
+MPUI_Hub_onexit()
+{
+	bool ans;
+	glock.lock();
+	ans = onexit;
+	glock.unlock();
+	return ans;
+}
 
 }
