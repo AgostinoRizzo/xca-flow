@@ -434,25 +434,33 @@ void mass_balance(int i, int j, int k, Substates &Q, int r, int c, int s, Parame
 // ----------------------------------------------------------------------------
 // cuda kernel routines
 // ----------------------------------------------------------------------------
+
+// BEGIN - common kernel block preface
+// ----------------------------------------------------------------------------
+#define ____KERNEL_BLOCK_PREFACE____                                       \
+  const int i = blockIdx.y*blockDim.y + threadIdx.y;                       \
+  const int j = blockIdx.x*blockDim.x + threadIdx.x;                       \
+  const int k = blockIdx.z*blockDim.z + threadIdx.z;                       \
+                                                                           \
+  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )          \
+    return;                                                                \
+                                                                           \
+  const bool zerothread = threadIdx.x == threadIdx.y == threadIdx.z == 0;  \
+  __shared__ Substates d__Q;                                               \
+                                                                           \
+  if ( zerothread )  /* thread 0 */                                        \
+  {                                                                        \
+    d__Q.__substates__ = d__substates__;                                   \
+    syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );        \
+  }                                                                        \
+  __syncthreads();
+// ----------------------------------------------------------------------------
+// END - common kernel block preface
+
 __global__
 void update_substates_kernel( double *d__substates__, int d__wsize[] )
 {
-  const int i = blockIdx.y*blockDim.y + threadIdx.y;
-  const int j = blockIdx.x*blockDim.x + threadIdx.x;
-  const int k = blockIdx.z*blockDim.z + threadIdx.z;
-
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
-    return;
-  
-  const bool zerothread = threadIdx.x == threadIdx.y == threadIdx.z == 0;
-  __shared__ Substates d__Q;
-
-  if ( zerothread )  // thread 0
-  {
-    d__Q.__substates__ = d__substates__;
-    syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
-  }
-  __syncthreads();
+  ____KERNEL_BLOCK_PREFACE____
 
   updateSubstates( d__Q, d__wsize[0], d__wsize[1], i, j, k );
 }
@@ -460,22 +468,7 @@ void update_substates_kernel( double *d__substates__, int d__wsize[] )
 __global__
 void simul_init_kernel( double *d__substates__, Parameters *d__P, int d__wsize[] )
 {
-  const int i = blockIdx.y*blockDim.y + threadIdx.y;
-  const int j = blockIdx.x*blockDim.x + threadIdx.x;
-  const int k = blockIdx.z*blockDim.z + threadIdx.z;
-
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
-    return;
-  
-  const bool zerothread = threadIdx.x == threadIdx.y == threadIdx.z == 0;
-  __shared__ Substates d__Q;
-
-  if ( zerothread )  // thread 0
-  {
-    d__Q.__substates__ = d__substates__;
-    syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
-  }
-  __syncthreads();
+  ____KERNEL_BLOCK_PREFACE____
 
   simulation_init( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], *d__P );
 }
@@ -483,22 +476,7 @@ void simul_init_kernel( double *d__substates__, Parameters *d__P, int d__wsize[]
 __global__
 void reset_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
 {
-  const int i = blockIdx.y*blockDim.y + threadIdx.y;
-  const int j = blockIdx.x*blockDim.x + threadIdx.x;
-  const int k = blockIdx.z*blockDim.z + threadIdx.z;
-
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
-    return;
-  
-  const bool zerothread = threadIdx.x == threadIdx.y == threadIdx.z == 0;
-  __shared__ Substates d__Q;
-
-  if ( zerothread )  // thread 0
-  {
-    d__Q.__substates__ = d__substates__;
-    syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
-  }
-  __syncthreads();
+  ____KERNEL_BLOCK_PREFACE____
 
   //
   // Apply the reset flow kernel to the whole domain
@@ -509,22 +487,7 @@ void reset_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundar
 __global__
 void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
 {
-  const int i = blockIdx.y*blockDim.y + threadIdx.y;
-  const int j = blockIdx.x*blockDim.x + threadIdx.x;
-  const int k = blockIdx.z*blockDim.z + threadIdx.z;
-
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
-    return;
-  
-  const bool zerothread = threadIdx.x == threadIdx.y == threadIdx.z == 0;
-  __shared__ Substates d__Q;
-
-  if ( zerothread )  // thread 0
-  {
-    d__Q.__substates__ = d__substates__;
-    syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
-  }
-  __syncthreads();
+  ____KERNEL_BLOCK_PREFACE____
 
   //
   // Apply the flow computation kernel to the whole domain
@@ -535,22 +498,7 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBound
 __global__
 void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
 {
-  const int i = blockIdx.y*blockDim.y + threadIdx.y;
-  const int j = blockIdx.x*blockDim.x + threadIdx.x;
-  const int k = blockIdx.z*blockDim.z + threadIdx.z;
-  
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
-    return;
-  
-  const bool zerothread = threadIdx.x == threadIdx.y == threadIdx.z == 0;
-  __shared__ Substates d__Q;
-
-  if ( zerothread )  // thread 0
-  {
-    d__Q.__substates__ = d__substates__;
-    syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
-  }
-  __syncthreads();
+  ____KERNEL_BLOCK_PREFACE____
 
   //
   // Apply the mass balance kernel to the domain bounded by mb_bounds 
