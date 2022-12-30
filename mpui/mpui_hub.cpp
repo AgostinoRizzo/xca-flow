@@ -2,6 +2,7 @@
 #include "glutils.hpp"
 
 #include <stdio.h>
+#include <string.h>
 #include <thread>
 #include <mutex>
 
@@ -335,6 +336,11 @@ void
 MPUI_Hub_finalize( std::thread *&loopth )
 {
 	loopth->join();
+	if ( displaybuff != nullptr )
+	{
+		delete[] displaybuff;
+		displaybuff = nullptr;
+	}
 	delete loopth;
 	loopth = nullptr;
 }
@@ -364,10 +370,17 @@ MPUI_Hub_setBuffer( double *buff, int xsize, int ysize, int zsize )
 		glock.unlock();
 		return;
 	}
-	displaybuff = buff;
+	
+	const int buffsize = xsize*ysize*zsize;
+	if ( displaybuff != nullptr && buff_xsize*buff_ysize*buff_zsize != buffsize )
+		delete[] displaybuff;
+	displaybuff = new double[buffsize];
+	memcpy(displaybuff, buff, sizeof(double)*buffsize);
+
 	buff_xsize = xsize;
 	buff_ysize = ysize;
 	buff_zsize = zsize;
+	
 	glutPostRedisplay();
 	glock.unlock();
 }
