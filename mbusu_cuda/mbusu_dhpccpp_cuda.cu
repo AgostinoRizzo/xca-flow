@@ -561,6 +561,27 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
     mass_balance( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], *d__P );
 }
 
+__global__
+void simul_steering( double *d__convergence, int size, double *minvar )
+{
+  const int t = threadIdx.x;
+  const int i = blockDim.x*blockIdx.x + t;
+  if ( i >= size ) return;
+
+  extern __shared__ double s__minvar[];
+  s__minvar[t] = d__convergence[i];
+
+  for ( int stride = blockDim.x/2; stride >= 1; stride = stride>>1 )
+  {
+    __syncthreads();
+    if ( t < stride && s__minvar[t+stride] < s__minvar[t] )
+      s__minvar[t] = s__minvar[t+stride];
+  }
+
+  // write the result of this block to the global memory.
+  if ( t == 0 ) minvar[blockIdx.x] = s__minvar[0];
+}
+
 // ----------------------------------------------------------------------------
 // main() function
 // ----------------------------------------------------------------------------
@@ -590,28 +611,36 @@ int main(int argc, char **argv)
   //mpui::MPUI_Session *session;
   //mpui::MPUI_Init(mpui::MPUI_Mode::HUB, wsize, session);
   
+  const dim3 block_size( blocksize_x, blocksize_y, blocksize_z );
+  const dim3 grid_size ( ceil(c / (float)block_size.x), ceil(r / (float)block_size.y), ceil(s / (float)block_size.z) );
+
+  const unsigned int steering_block_size = block_size.x * block_size.y * block_size.z;
+        unsigned int steering_grid_size  = ceil(r*c*s / (float)steering_block_size);
+
+  const int substate_offset_size = r*c*s;
+  int reduction_size;
+
   double           *d__substates__;
   Parameters       *d__P;
   DomainBoundaries *d__mb_bounds;
   int              *d__wsize;
-  cudaMalloc( &d__substates__, substsize * sizeof(double) );
-  cudaMalloc( &d__P,                       sizeof(Parameters) );
-  cudaMalloc( &d__mb_bounds,               sizeof(DomainBoundaries) );
-  cudaMalloc( &d__wsize,               3 * sizeof(int) );
+  double           *d__minvar;
+  cudaMalloc( &d__substates__,     substsize * sizeof(double) );
+  cudaMalloc( &d__P,                           sizeof(Parameters) );
+  cudaMalloc( &d__mb_bounds,                   sizeof(DomainBoundaries) );
+  cudaMalloc( &d__wsize,                   3 * sizeof(int) );
+  cudaMalloc( &d__minvar, steering_grid_size * sizeof(double) );
 
   cudaMemcpy( d__substates__,  h__Q.__substates__, substsize * sizeof(double),           cudaMemcpyHostToDevice );
   cudaMemcpy( d__P,           &h__P,                           sizeof(Parameters),       cudaMemcpyHostToDevice );
   cudaMemcpy( d__mb_bounds,   &h__mb_bounds,                   sizeof(DomainBoundaries), cudaMemcpyHostToDevice );
   cudaMemcpy( d__wsize,        h__wsize,                   3 * sizeof(int),              cudaMemcpyHostToDevice );
 
-  dim3 block_size( blocksize_x, blocksize_y, blocksize_z );
-  dim3 grid_size ( ceil(c / (float)block_size.x), ceil(r / (float)block_size.y), ceil(s / (float)block_size.z) );
-
   //
   // Apply the simulation init kernel to the whole domain
   //
-  simul_init_kernel      <<<grid_size, block_size>>>( d__substates__, d__P, d__wsize );
-  update_substates_kernel<<<grid_size, block_size>>>( d__substates__, d__wsize );
+  simul_init_kernel      <<< grid_size, block_size >>>( d__substates__, d__P, d__wsize );
+  update_substates_kernel<<< grid_size, block_size >>>( d__substates__, d__wsize );
 
   //
   // simulation loop
@@ -625,31 +654,29 @@ int main(int argc, char **argv)
     // Apply the whole simulation cycle:
     //     1. apply the reset flow kernel to the whole domain
     //     2. apply the flow computation kernel to the whole domain
-    //     3. apply the mass balance kernel to the domain bounded by mb_bounds 
+    //     3. apply the mass balance kernel to the domain bounded by mb_bounds
+    //     4. simulation steering
     //
-    reset_flows_kernel     <<<grid_size, block_size>>>( d__substates__, d__P, d__mb_bounds, d__wsize );
-    compute_flows_kernel   <<<grid_size, block_size>>>( d__substates__, d__P, d__mb_bounds, d__wsize );
-    mass_balance_kernel    <<<grid_size, block_size>>>( d__substates__, d__P, d__mb_bounds, d__wsize );
-    update_substates_kernel<<<grid_size, block_size>>>( d__substates__, d__wsize );
-    
-    cudaMemcpy( h__Q.__substates__, d__substates__, substsize * sizeof(double), cudaMemcpyDeviceToHost );
-    syncSubstatesPtrs( h__Q, r*c*s );
+    reset_flows_kernel     <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
+    compute_flows_kernel   <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
+    mass_balance_kernel    <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
+    update_substates_kernel<<< grid_size, block_size >>>( d__substates__, d__wsize );
 
-    // Simulation Steering (TODO: move to GPU)
-    double minVar = GET3D(h__Q.convergence, r, c, 0, 0, 0);
-    int i, j, k;
-#pragma omp parallel for reduction(min : minVar) 
-    for (i = 0; i < r; i++)
-      for (j = 0; j < c; j++)
-        for (k = 0; k <s; k++)
-        {
-          double tmpmin = GET3D(h__Q.convergence, r, c, i, j, k);
-          if (minVar > tmpmin)
-            minVar = tmpmin;
-        }
+    reduction_size = substate_offset_size;
+    do
+    {
+      steering_grid_size = ceil(reduction_size / (float)steering_block_size);
+      simul_steering<<< steering_grid_size, steering_block_size, steering_block_size * sizeof(double) >>>( d__substates__ + substate_offset_size*13, substate_offset_size, d__minvar );
+      reduction_size = steering_grid_size;
+    }
+    while( steering_grid_size > 1 );
+
+    double minVar;
+    cudaMemcpy( &minVar, d__minvar, sizeof(double), cudaMemcpyDeviceToHost );
+    
     if (minVar > 55.0)
       minVar = 55.0;
-
+    
     h__P.delta_t = minVar;
     h__P.delta_t_cum_prec = h__P.delta_t_cum;
     h__P.delta_t_cum += h__P.delta_t;
@@ -661,10 +688,14 @@ int main(int argc, char **argv)
   //printf("Elapsed time: %lf [s]\n", cl_time);
   printf("%lf\n", cl_time);
 
+  // only h__Q.h is necessary at this point.
+  cudaMemcpy( h__Q.__substates__ + substate_offset_size*9, d__substates__ + substate_offset_size*9, substate_offset_size * sizeof(double), cudaMemcpyDeviceToHost );
+  
   cudaFree( d__substates__ );
   cudaFree( d__P           );
   cudaFree( d__mb_bounds   );
   cudaFree( d__wsize       );
+  cudaFree( d__minvar      );
 
   //mpui::MPUI_Finalize(session);
   
