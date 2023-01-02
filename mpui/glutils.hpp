@@ -27,10 +27,12 @@ public:
     ColorRange( Color l, Color u ): lower(l), upper(u) {}
     Color get( float rIndex )
     {
-        Color c;
-        c.r = computeChannelValue(lower.r, upper.r, rIndex);
-        c.g = computeChannelValue(lower.g, upper.g, rIndex);
-        c.b = computeChannelValue(lower.b, upper.b, rIndex);
+        Color l, u, c;
+        if ( rIndex < 0.5f ) { l = lower; u = Color(255, 255, 255); rIndex /= 0.5f; } 
+        else               { l = Color(255, 255, 255); u = upper; rIndex = (rIndex-0.5f)/0.5f; } 
+        c.r = computeChannelValue(l.r, u.r, rIndex);
+        c.g = computeChannelValue(l.g, u.g, rIndex);
+        c.b = computeChannelValue(l.b, u.b, rIndex);
         return c;
     }
 private:
@@ -40,7 +42,7 @@ private:
     static float computeChannelValue( float chval_a, float chval_b, float rIndex )
     {
         float chmin=chval_a, chmax=chval_b;
-        if ( chval_a > chval_b ) { chmin = chval_a; chmax = chval_b; }
+        if ( chval_a > chval_b ) { chmin = chval_b; chmax = chval_a; }
         return chmin + ((chmax - chmin) * rIndex);
     }
 };
