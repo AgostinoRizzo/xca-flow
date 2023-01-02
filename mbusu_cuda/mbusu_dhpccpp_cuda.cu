@@ -8,6 +8,10 @@
 #include "../mbusu_cpu/util.hpp"
 //#include "../mpui/mpui.h"
 // ----------------------------------------------------------------------------
+// CUDA implementation
+// ----------------------------------------------------------------------------
+#define CUDA_VERSION_TILED_HALO
+// ----------------------------------------------------------------------------
 // I/O parameters used to index argv[]
 // ----------------------------------------------------------------------------
 #define ROWS_ID 1
@@ -292,51 +296,70 @@ void reset_flows(int i, int j, int k, Substates &Q, int r, int c, int s)
   BUF_SET3D(Q.F, r, c, s, 4, i, j, k, 0.0);
   BUF_SET3D(Q.F, r, c, s, 5, i, j, k, 0.0);
 }
+
+#ifdef CUDA_VERSION_TILED_HALO
+  #define GET3D_Q_h(xi, xj, xk) (GET3D(Q.h, s__rows, s__cols, s__i+xi, s__j+xj, s__k+xk))
+  #define GET3D_Q_k(xi, xj, xk) (GET3D(Q.k, s__rows, s__cols, s__i+xi, s__j+xj, s__k+xk))
+  #define BUF_GET3D_Q_F(n, xi, xj, xk) (BUF_GET3D(Q.F, s__rows, s__cols, s__slices, n, s__i+xi, s__j+xj, s__k+xk))
+#else
+  #define GET3D_Q_h(xi, xj, xk) (GET3D(Q.h, r, c, i+xi, j+xj, k+xk))
+  #define GET3D_Q_k(xi, xj, xk) (GET3D(Q.k, r, c, i+xi, j+xj, k+xk))
+  #define BUF_GET3D_Q_F(n, xi, xj, xk) (BUF_GET3D(Q.F, r, c, s, n, i+xi, j+xj, k+xk))
+#endif
+
 __device__
+#ifdef CUDA_VERSION_TILED_HALO
+void compute_flows(int i, int j, int k, int s__i, int s__j, int s__k, Substates &Q, int r, int c, int s, int s__rows, int s__cols, Parameters &P)
+#else
 void compute_flows(int i, int j, int k, Substates &Q, int r, int c, int s, Parameters &P)
+#endif
 {
   int k_inv = (s-1) - k;
   double Delta_h = 0.0;
-  double h = GET3D(Q.h, r, c, i, j, k); 
+  double h = GET3D_Q_h(0, 0, 0); 
 
-  if (k_inv > P.ZFONDO && h > GET3D(Q.h, r, c, i+Xi[6], j+Xj[6], k+Xk[6]))
+  if (k_inv > P.ZFONDO && h > GET3D_Q_h(Xi[6], Xj[6], Xk[6]))
   {
-    Delta_h = h - GET3D(Q.h, r, c, i+Xi[6], j+Xj[6], k+Xk[6]);
+    Delta_h = h - GET3D_Q_h(Xi[6], Xj[6], Xk[6]);
     BUF_SET3D(Q.F, r, c, s, 0, i, j, k, Delta_h);
   }
 
-  if (k_inv < P.ZSUP && h > GET3D(Q.h, r, c, i+Xi[5], j+Xj[5], k+Xk[5]))
+  if (k_inv < P.ZSUP && h > GET3D_Q_h(Xi[5], Xj[5], Xk[5]))
   {
-    Delta_h = h - GET3D(Q.h, r, c, i+Xi[5], j+Xj[5], k+Xk[5]);
+    Delta_h = h - GET3D_Q_h(Xi[5], Xj[5], Xk[5]);
     BUF_SET3D(Q.F, r, c, s, 1, i, j, k, Delta_h);
   }
 
-  if (i > P.XW && h > GET3D(Q.h, r, c, i+Xi[1], j+Xj[1], k+Xk[1]))
+  if (i > P.XW && h > GET3D_Q_h(Xi[1], Xj[1], Xk[1]))
   {
-    Delta_h = h - GET3D(Q.h, r, c, i+Xi[1], j+Xj[1], k+Xk[1]);
+    Delta_h = h - GET3D_Q_h(Xi[1], Xj[1], Xk[1]);
     BUF_SET3D(Q.F, r, c, s, 2, i, j, k, Delta_h);
   }
 
-  if (i < P.XE && h > GET3D(Q.h, r, c, i+Xi[4], j+Xj[4], k+Xk[4]))
+  if (i < P.XE && h > GET3D_Q_h(Xi[4], Xj[4], Xk[4]))
   {
-    Delta_h = h - GET3D(Q.h, r, c, i+Xi[4], j+Xj[4], k+Xk[4]);
+    Delta_h = h - GET3D_Q_h(Xi[4], Xj[4], Xk[4]);
     BUF_SET3D(Q.F, r, c, s, 3, i, j, k, Delta_h);
   }
 
-  if (j > P.YIN && h > GET3D(Q.h, r, c, i+Xi[2], j+Xj[2], k+Xk[2]))
+  if (j > P.YIN && h > GET3D_Q_h(Xi[2], Xj[2], Xk[2]))
   {
-    Delta_h = h - GET3D(Q.h, r, c, i+Xi[2], j+Xj[2], k+Xk[2]);
+    Delta_h = h - GET3D_Q_h(Xi[2], Xj[2], Xk[2]);
     BUF_SET3D(Q.F, r, c, s, 4, i, j, k, Delta_h);
   }
 
-  if (j < P.YOUT && h > GET3D(Q.h, r, c, i+Xi[3], j+Xj[3], k+Xk[3]))
+  if (j < P.YOUT && h > GET3D_Q_h(Xi[3], Xj[3], Xk[3]))
   {
-    Delta_h = h - GET3D(Q.h, r, c, i+Xi[3], j+Xj[3], k+Xk[3]);
+    Delta_h = h - GET3D_Q_h(Xi[3], Xj[3], Xk[3]);
     BUF_SET3D(Q.F, r, c, s, 5, i, j, k, Delta_h);
   }
 }
 __device__
+#ifdef CUDA_VERSION_TILED_HALO
+void mass_balance(int i, int j, int k, int s__i, int s__j, int s__k, Substates &Q, int r, int c, int s, int s__rows, int s__cols, int s__slices, Parameters &P)
+#else
 void mass_balance(int i, int j, int k, Substates &Q, int r, int c, int s, Parameters &P)
+#endif
 {
   int k_inv = (s-1) - k;
   double quota = P.lato * k_inv;
@@ -351,38 +374,38 @@ void mass_balance(int i, int j, int k, Substates &Q, int r, int c, int s, Parame
   ks = GET3D(Q.ks, r, c, i, j, k);
   h_next = GET3D(Q.h, r, c, i, j, k);
 
-  double currentK = GET3D(Q.k, r, c, i, j, k);
+  double currentK = GET3D_Q_k(0, 0, 0);
   double currentDQDH = GET3D(Q.dqdh, r, c, i, j, k);
 
-  temp_value = ((currentK + GET3D(Q.k, r, c, i+Xi[4], j+Xj[4], k+Xk[4])) / 2.0) * currentDQDH;
-  h_next = h_next - (BUF_GET3D(Q.F, r, c, s, 3, i, j, k) / (P.lato * P.lato)) * P.delta_t * temp_value;
-  h_next = h_next + (BUF_GET3D(Q.F, r, c, s, 2, i+Xi[4], j+Xj[4], k+Xk[4]) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  temp_value = ((currentK + GET3D_Q_k(Xi[4], Xj[4], Xk[4])) / 2.0) * currentDQDH;
+  h_next = h_next - (BUF_GET3D_Q_F(3, 0, 0, 0) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  h_next = h_next + (BUF_GET3D_Q_F(2, Xi[4], Xj[4], Xk[4]) / (P.lato * P.lato)) * P.delta_t * temp_value;
 
-  temp_value = ((currentK + GET3D(Q.k, r, c, i+Xi[1], j+Xj[1], k+Xk[1])) / 2.0) * currentDQDH;
-  h_next = h_next - (BUF_GET3D(Q.F, r, c, s, 2, i, j, k) / (P.lato * P.lato)) * P.delta_t * temp_value;
-  h_next = h_next + (BUF_GET3D(Q.F, r, c, s, 3, i+Xi[1], j+Xj[1], k+Xk[1]) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  temp_value = ((currentK + GET3D_Q_k(Xi[1], Xj[1], Xk[1])) / 2.0) * currentDQDH;
+  h_next = h_next - (BUF_GET3D_Q_F(2, 0, 0, 0) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  h_next = h_next + (BUF_GET3D_Q_F(3, Xi[1], Xj[1], Xk[1]) / (P.lato * P.lato)) * P.delta_t * temp_value;
 
   if( k_inv != P.ZSUP )
   {
-    temp_value = ((currentK +GET3D(Q.k, r, c, i+Xi[5], j+Xj[5], k+Xk[5])) / 2.0) * currentDQDH;
-    h_next = h_next - (BUF_GET3D(Q.F, r, c, s, 1, i, j, k) / (P.lato * P.lato)) * P.delta_t * temp_value;
-    h_next = h_next + (BUF_GET3D(Q.F, r, c, s, 0, i+Xi[5], j+Xj[5], k+Xk[5]) / (P.lato * P.lato)) * P.delta_t * temp_value;
+    temp_value = ((currentK +GET3D_Q_k(Xi[5], Xj[5], Xk[5])) / 2.0) * currentDQDH;
+    h_next = h_next - (BUF_GET3D_Q_F(1, 0, 0, 0) / (P.lato * P.lato)) * P.delta_t * temp_value;
+    h_next = h_next + (BUF_GET3D_Q_F(0, Xi[5], Xj[5], Xk[5]) / (P.lato * P.lato)) * P.delta_t * temp_value;
   }
 
   if( k_inv != P.ZFONDO )
   {
-    temp_value = ((currentK + GET3D(Q.k, r, c, i+Xi[6], j+Xj[6], k+Xk[6])) / 2.0) * currentDQDH;
-    h_next = h_next - (BUF_GET3D(Q.F, r, c, s, 0, i, j, k) / (P.lato * P.lato)) * P.delta_t * temp_value;
-    h_next = h_next + (BUF_GET3D(Q.F, r, c, s, 1, i+Xi[6], j+Xj[6], k+Xk[6]) / (P.lato * P.lato)) * P.delta_t * temp_value;
+    temp_value = ((currentK + GET3D_Q_k(Xi[6], Xj[6], Xk[6])) / 2.0) * currentDQDH;
+    h_next = h_next - (BUF_GET3D_Q_F(0, 0, 0, 0) / (P.lato * P.lato)) * P.delta_t * temp_value;
+    h_next = h_next + (BUF_GET3D_Q_F(1, Xi[6], Xj[6], Xk[6]) / (P.lato * P.lato)) * P.delta_t * temp_value;
   }
 
-  temp_value = ((currentK + GET3D(Q.k, r, c, i+Xi[3], j+Xj[3], k+Xk[3])) / 2.0) * currentDQDH;
-  h_next = h_next - (BUF_GET3D(Q.F, r, c, s, 5, i, j, k) / (P.lato * P.lato)) * P.delta_t * temp_value;
-  h_next = h_next + (BUF_GET3D(Q.F, r, c, s, 4, i+Xi[3], j+Xj[3], k+Xk[3]) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  temp_value = ((currentK + GET3D_Q_k(Xi[3], Xj[3], Xk[3])) / 2.0) * currentDQDH;
+  h_next = h_next - (BUF_GET3D_Q_F(5, 0, 0, 0) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  h_next = h_next + (BUF_GET3D_Q_F(4, Xi[3], Xj[3], Xk[3]) / (P.lato * P.lato)) * P.delta_t * temp_value;
 
-  temp_value = ((currentK + GET3D(Q.k, r, c, i+Xi[2], j+Xj[2], k+Xk[2])) / 2.0) * currentDQDH;
-  h_next = h_next - (BUF_GET3D(Q.F, r, c, s, 4, i, j, k) / (P.lato * P.lato)) * P.delta_t * temp_value;
-  h_next = h_next + (BUF_GET3D(Q.F, r, c, s, 5, i+Xi[2], j+Xj[2], k+Xk[2]) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  temp_value = ((currentK + GET3D_Q_k(Xi[2], Xj[2], Xk[2])) / 2.0) * currentDQDH;
+  h_next = h_next - (BUF_GET3D_Q_F(4, 0, 0, 0) / (P.lato * P.lato)) * P.delta_t * temp_value;
+  h_next = h_next + (BUF_GET3D_Q_F(5, Xi[2], Xj[2], Xk[2]) / (P.lato * P.lato)) * P.delta_t * temp_value;
 
   if (k_inv == P.ZSUP && i <= r * 0.7 && i > r * 0.3 && j <= c * 0.7 && j > c * 0.3)
   {
@@ -487,17 +510,97 @@ void reset_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundar
 __global__
 void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
 {
-  ____KERNEL_BLOCK_PREFACE____
+#ifdef CUDA_VERSION_TILED_HALO
 
+  #define TILE_SIZE_X (blockDim.x-2)
+  #define TILE_SIZE_Y (blockDim.y-2)
+  #define TILE_SIZE_Z (blockDim.z-2)
+  const int      i = blockIdx.y*TILE_SIZE_Y + threadIdx.y;
+  const int      j = blockIdx.x*TILE_SIZE_X + threadIdx.x;
+  const int      k = blockIdx.z*TILE_SIZE_Z + threadIdx.z;
+  const int i_halo = i-1;
+  const int j_halo = j-1;
+  const int k_halo = k-1;
+
+  Substates d__Q;
+  extern __shared__ double s__Q_h[];
+
+  d__Q.__substates__ = d__substates__;
+  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+  
+  if ( i_halo >= 0 && j_halo >= 0 && k_halo >= 0 &&
+       i_halo < d__wsize[0] && j_halo < d__wsize[1] && k_halo < d__wsize[2] )
+    SET3D( s__Q_h, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.h, d__wsize[0], d__wsize[1], i_halo, j_halo, k_halo) );
+  
+  __syncthreads();
+
+  if ( threadIdx.x >= TILE_SIZE_X || threadIdx.y >= TILE_SIZE_Y || threadIdx.z >= TILE_SIZE_Z ||
+       i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+    return;
+
+  d__Q.h = s__Q_h;
+  //
+  // Apply the flow computation kernel to the whole domain
+  //
+  compute_flows( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, *d__P );
+
+#else
+  ____KERNEL_BLOCK_PREFACE____
   //
   // Apply the flow computation kernel to the whole domain
   //
   compute_flows( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], *d__P );
+#endif
 }
 
 __global__
 void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
 {
+#ifdef CUDA_VERSION_TILED_HALO
+
+  #define TILE_SIZE_X (blockDim.x-2)
+  #define TILE_SIZE_Y (blockDim.y-2)
+  #define TILE_SIZE_Z (blockDim.z-2)
+  const int      i = blockIdx.y*TILE_SIZE_Y + threadIdx.y;
+  const int      j = blockIdx.x*TILE_SIZE_X + threadIdx.x;
+  const int      k = blockIdx.z*TILE_SIZE_Z + threadIdx.z;
+  const int i_halo = i-1;
+  const int j_halo = j-1;
+  const int k_halo = k-1;
+
+  Substates d__Q;
+  extern __shared__ double s__Q_kF[];
+  double *s__Q_k = s__Q_kF;
+  double *s__Q_F = s__Q_kF + blockDim.x*blockDim.y*blockDim.z;
+
+  d__Q.__substates__ = d__substates__;
+  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+  
+  if ( i_halo >= 0 && j_halo >= 0 && k_halo >= 0 &&
+       i_halo < d__wsize[0] && j_halo < d__wsize[1] && k_halo < d__wsize[2] )
+  {
+    SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, d__wsize[0], d__wsize[1], i_halo, j_halo, k_halo) );
+    for ( int adjc=0; adjc < ADJACENT_CELLS; ++adjc )
+      BUF_SET3D( s__Q_F, blockDim.y, blockDim.x, blockDim.z, adjc, threadIdx.y, threadIdx.x, threadIdx.z, BUF_GET3D(d__Q.F, d__wsize[0], d__wsize[1], d__wsize[2], adjc, i_halo, j_halo, k_halo) );
+  }
+  
+  __syncthreads();
+
+  if ( threadIdx.x >= TILE_SIZE_X || threadIdx.y >= TILE_SIZE_Y || threadIdx.z >= TILE_SIZE_Z ||
+       i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+    return;
+
+  d__Q.k = s__Q_k;
+  d__Q.F = s__Q_F;
+  //
+  // Apply the flow computation kernel to the whole domain
+  //
+  if ( i >= d__mb_bounds->i_start && i < d__mb_bounds->i_end &&
+       j >= d__mb_bounds->j_start && j < d__mb_bounds->j_end &&
+       k >= d__mb_bounds->k_start && k < d__mb_bounds->k_end )
+  mass_balance( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, blockDim.z, *d__P );
+
+#else
   ____KERNEL_BLOCK_PREFACE____
 
   //
@@ -507,6 +610,7 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
        j >= d__mb_bounds->j_start && j < d__mb_bounds->j_end &&
        k >= d__mb_bounds->k_start && k < d__mb_bounds->k_end )
     mass_balance( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], *d__P );
+#endif
 }
 
 __global__
@@ -568,6 +672,11 @@ int main(int argc, char **argv)
   const int substate_offset_size = r*c*s;
   int reduction_size;
 
+  #ifdef CUDA_VERSION_TILED_HALO
+  const dim3 tiled_halo_block_size( blocksize_x+2, blocksize_y+2, blocksize_z+2 );
+  const unsigned int sharedmem_size = tiled_halo_block_size.x * tiled_halo_block_size.y * tiled_halo_block_size.z;
+  #endif
+
   double           *d__substates__;
   Parameters       *d__P;
   DomainBoundaries *d__mb_bounds;
@@ -606,8 +715,21 @@ int main(int argc, char **argv)
     //     4. simulation steering
     //
     reset_flows_kernel     <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
-    compute_flows_kernel   <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
-    mass_balance_kernel    <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
+    compute_flows_kernel   <<< grid_size,
+    #ifdef CUDA_VERSION_TILED_HALO
+      tiled_halo_block_size, sharedmem_size * sizeof(double)
+    #else
+      block_size
+    #endif
+       >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
+    
+    mass_balance_kernel    <<< grid_size,
+    #ifdef CUDA_VERSION_TILED_HALO
+      tiled_halo_block_size, sharedmem_size * sizeof(double) + sharedmem_size * sizeof(double) * ADJACENT_CELLS
+    #else
+      block_size
+    #endif
+       >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
     update_substates_kernel<<< grid_size, block_size >>>( d__substates__, d__wsize );
 
     reduction_size = substate_offset_size;
@@ -629,6 +751,11 @@ int main(int argc, char **argv)
     h__P.delta_t_cum_prec = h__P.delta_t_cum;
     h__P.delta_t_cum += h__P.delta_t;
     
+    cudaError err = cudaGetLastError();
+    if ( err != cudaSuccess )
+    {
+      printf("%s in %s at line %d\n", cudaGetErrorString(err), __FILE__, __LINE__);
+    }
     //mpui::MPUI_Recv_local(session, h__Q.h);
   }
 
