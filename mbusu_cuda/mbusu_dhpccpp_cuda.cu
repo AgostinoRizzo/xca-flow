@@ -10,7 +10,8 @@
 // ----------------------------------------------------------------------------
 // CUDA implementation
 // ----------------------------------------------------------------------------
-#define CUDA_VERSION_TILED_HALO
+//#define CUDA_VERSION_TILED_HALO
+//#define CUDA_VERSION_TILED_NO_HALO
 // ----------------------------------------------------------------------------
 // I/O parameters used to index argv[]
 // ----------------------------------------------------------------------------
@@ -297,10 +298,32 @@ void reset_flows(int i, int j, int k, Substates &Q, int r, int c, int s)
   BUF_SET3D(Q.F, r, c, s, 5, i, j, k, 0.0);
 }
 
-#ifdef CUDA_VERSION_TILED_HALO
+#if defined(CUDA_VERSION_TILED_HALO)
   #define GET3D_Q_h(xi, xj, xk) (GET3D(Q.h, s__rows, s__cols, s__i+xi, s__j+xj, s__k+xk))
   #define GET3D_Q_k(xi, xj, xk) (GET3D(Q.k, s__rows, s__cols, s__i+xi, s__j+xj, s__k+xk))
   #define BUF_GET3D_Q_F(n, xi, xj, xk) (BUF_GET3D(Q.F, s__rows, s__cols, s__slices, n, s__i+xi, s__j+xj, s__k+xk))
+#elif defined(CUDA_VERSION_TILED_NO_HALO)
+  __device__
+  inline double GET3D_SHARED( double *M, double *s__M,
+                              int rows, int cols, int i, int j, int k,
+                              int s__rows, int s__cols, int s__slices, int s__i, int s__j, int s__k )
+  {
+    return ( s__i < 0 || s__j < 0 || s__k < 0 || s__i >= s__rows || s__j >= s__cols || s__k >= s__slices )
+           ? GET3D(M, rows, cols, i, j, k)
+           : GET3D(s__M, s__rows, s__cols, s__i, s__j, s__k);
+  }
+  __device__
+  inline double BUF_GET3D_SHARED( double *M, double *s__M,
+                                  int rows, int cols, int slices, int n, int i, int j, int k,
+                                  int s__rows, int s__cols, int s__slices, int s__i, int s__j, int s__k )
+  {
+    return ( s__i < 0 || s__j < 0 || s__k < 0 || s__i >= s__rows || s__j >= s__cols || s__k >= s__slices )
+           ? BUF_GET3D(M, rows, cols, slices, n, i, j, k)
+           : BUF_GET3D(s__M, s__rows, s__cols, s__slices, n, s__i, s__j, s__k);
+  }
+  #define GET3D_Q_h(xi, xj, xk) (GET3D_SHARED(Q.h, s__Q_h, r, c, i+xi, j+xj, k+xk, s__rows, s__cols, s__slices, s__i+xi, s__j+xj, s__k+xk ))
+  #define GET3D_Q_k(xi, xj, xk) (GET3D_SHARED(Q.k, s__Q_k, r, c, i+xi, j+xj, k+xk, s__rows, s__cols, s__slices, s__i+xi, s__j+xj, s__k+xk ))
+  #define BUF_GET3D_Q_F(n, xi, xj, xk) (BUF_GET3D_SHARED(Q.F, s__Q_F, r, c, s, n, i+xi, j+xj, k+xk, s__rows, s__cols, s__slices, s__i+xi, s__j+xj, s__k+xk ))
 #else
   #define GET3D_Q_h(xi, xj, xk) (GET3D(Q.h, r, c, i+xi, j+xj, k+xk))
   #define GET3D_Q_k(xi, xj, xk) (GET3D(Q.k, r, c, i+xi, j+xj, k+xk))
@@ -308,8 +331,10 @@ void reset_flows(int i, int j, int k, Substates &Q, int r, int c, int s)
 #endif
 
 __device__
-#ifdef CUDA_VERSION_TILED_HALO
+#if defined(CUDA_VERSION_TILED_HALO)
 void compute_flows(int i, int j, int k, int s__i, int s__j, int s__k, Substates &Q, int r, int c, int s, int s__rows, int s__cols, Parameters &P)
+#elif defined(CUDA_VERSION_TILED_NO_HALO)
+void compute_flows(int i, int j, int k, int s__i, int s__j, int s__k, Substates &Q, double *s__Q_h, int r, int c, int s, int s__rows, int s__cols, int s__slices, Parameters &P )
 #else
 void compute_flows(int i, int j, int k, Substates &Q, int r, int c, int s, Parameters &P)
 #endif
@@ -355,8 +380,10 @@ void compute_flows(int i, int j, int k, Substates &Q, int r, int c, int s, Param
   }
 }
 __device__
-#ifdef CUDA_VERSION_TILED_HALO
+#if defined(CUDA_VERSION_TILED_HALO)
 void mass_balance(int i, int j, int k, int s__i, int s__j, int s__k, Substates &Q, int r, int c, int s, int s__rows, int s__cols, int s__slices, Parameters &P)
+#elif defined(CUDA_VERSION_TILED_NO_HALO)
+void mass_balance(int i, int j, int k, int s__i, int s__j, int s__k, Substates &Q, double *s__Q_k, double *s__Q_F, int r, int c, int s, int s__rows, int s__cols, int s__slices, Parameters &P )
 #else
 void mass_balance(int i, int j, int k, Substates &Q, int r, int c, int s, Parameters &P)
 #endif
@@ -510,7 +537,7 @@ void reset_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundar
 __global__
 void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
 {
-#ifdef CUDA_VERSION_TILED_HALO
+#if defined(CUDA_VERSION_TILED_HALO)
 
   #define TILE_SIZE_X (blockDim.x-2)
   #define TILE_SIZE_Y (blockDim.y-2)
@@ -544,6 +571,30 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBound
   //
   compute_flows( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, *d__P );
 
+#elif defined(CUDA_VERSION_TILED_NO_HALO)
+
+  const int i = blockIdx.y*blockDim.y + threadIdx.y;
+  const int j = blockIdx.x*blockDim.x + threadIdx.x;
+  const int k = blockIdx.z*blockDim.z + threadIdx.z;
+
+  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+    return;
+  
+  Substates d__Q;
+  extern __shared__ double s__Q_h[];
+
+  d__Q.__substates__ = d__substates__;
+  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+
+  SET3D( s__Q_h, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.h, d__wsize[0], d__wsize[1], i, j, k) );
+  __syncthreads();
+
+  //
+  // Apply the flow computation kernel to the whole domain
+  //
+  compute_flows( i, j, k, threadIdx.y, threadIdx.x, threadIdx.z, d__Q, s__Q_h,
+                 d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, blockDim.z, *d__P );
+  
 #else
   ____KERNEL_BLOCK_PREFACE____
   //
@@ -556,7 +607,7 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBound
 __global__
 void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
 {
-#ifdef CUDA_VERSION_TILED_HALO
+#if defined(CUDA_VERSION_TILED_HALO)
 
   #define TILE_SIZE_X (blockDim.x-2)
   #define TILE_SIZE_Y (blockDim.y-2)
@@ -599,6 +650,37 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
        j >= d__mb_bounds->j_start && j < d__mb_bounds->j_end &&
        k >= d__mb_bounds->k_start && k < d__mb_bounds->k_end )
   mass_balance( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, blockDim.z, *d__P );
+
+#elif defined(CUDA_VERSION_TILED_NO_HALO)
+
+  const int i = blockIdx.y*blockDim.y + threadIdx.y;
+  const int j = blockIdx.x*blockDim.x + threadIdx.x;
+  const int k = blockIdx.z*blockDim.z + threadIdx.z;
+
+  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+    return;
+  
+  Substates d__Q;
+  extern __shared__ double s__Q_kF[];
+  double *s__Q_k = s__Q_kF;
+  double *s__Q_F = s__Q_kF + blockDim.x*blockDim.y*blockDim.z;
+
+  d__Q.__substates__ = d__substates__;
+  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+
+  SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, d__wsize[0], d__wsize[1], i, j, k) );
+  for ( int adjc=0; adjc < ADJACENT_CELLS; ++adjc )
+    BUF_SET3D( s__Q_F, blockDim.y, blockDim.x, blockDim.z, adjc, threadIdx.y, threadIdx.x, threadIdx.z, BUF_GET3D(d__Q.F, d__wsize[0], d__wsize[1], d__wsize[2], adjc, i, j, k) );
+  __syncthreads();
+
+  //
+  // Apply the mass balance kernel to the domain bounded by mb_bounds 
+  //
+  if ( i >= d__mb_bounds->i_start && i < d__mb_bounds->i_end &&
+       j >= d__mb_bounds->j_start && j < d__mb_bounds->j_end &&
+       k >= d__mb_bounds->k_start && k < d__mb_bounds->k_end )
+    mass_balance( i, j, k, threadIdx.y, threadIdx.x, threadIdx.z, d__Q, s__Q_k, s__Q_F,
+                  d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, blockDim.z, *d__P );
 
 #else
   ____KERNEL_BLOCK_PREFACE____
@@ -716,16 +798,20 @@ int main(int argc, char **argv)
     //
     reset_flows_kernel     <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
     compute_flows_kernel   <<< grid_size,
-    #ifdef CUDA_VERSION_TILED_HALO
+    #if defined(CUDA_VERSION_TILED_HALO)
       tiled_halo_block_size, sharedmem_size * sizeof(double)
+    #elif defined(CUDA_VERSION_TILED_NO_HALO)
+      block_size, block_size.x*block_size.y*block_size.z * sizeof(double)
     #else
       block_size
     #endif
        >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
     
     mass_balance_kernel    <<< grid_size,
-    #ifdef CUDA_VERSION_TILED_HALO
+    #if defined(CUDA_VERSION_TILED_HALO)
       tiled_halo_block_size, sharedmem_size * sizeof(double) + sharedmem_size * sizeof(double) * ADJACENT_CELLS
+    #elif defined(CUDA_VERSION_TILED_NO_HALO)
+      block_size, block_size.x*block_size.y*block_size.z * sizeof(double) * (1 + ADJACENT_CELLS)
     #else
       block_size
     #endif
