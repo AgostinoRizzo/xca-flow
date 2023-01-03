@@ -17,9 +17,9 @@ endif
 # BUILD                                                                       #
 ###############################################################################
 
-SRC = mbusu_dhpccpp_cuda.cu #../mpui/mpui.cpp ../mpui/mpui_hub.cpp
-BIN = mbusu_dhpccpp_cuda.o #mpui.o mpui_hub.o
-EXE = mbusu_dhpccpp_cuda
+SRC = mbusu_dhpccpp.cu #../mpui/mpui.cpp ../mpui/mpui_hub.cpp
+BIN = mbusu_dhpccpp.o #mpui.o mpui_hub.o
+EXE = mbusu_dhpccpp
 
 SRC_TILED = mbusu_dhpccpp_cuda_tiled.cu
 BIN_TILED = mbusu_dhpccpp_cuda_tiled.o
