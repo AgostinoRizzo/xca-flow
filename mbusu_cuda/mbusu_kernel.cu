@@ -239,7 +239,7 @@ void simul_steering( double *d__convergence, int size, double *minvar )
   for ( int stride = blockDim.x/2; stride >= 1; stride = stride>>1 )
   {
     __syncthreads();
-    if ( t < stride && s__minvar[t+stride] < s__minvar[t] )
+    if ( t < stride && i+stride < size && s__minvar[t+stride] < s__minvar[t] )
       s__minvar[t] = s__minvar[t+stride];
   }
 

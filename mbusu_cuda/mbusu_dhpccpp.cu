@@ -1,6 +1,10 @@
 #include "mbusu_dhpccpp.hpp"
 #include "mbusu_kernel.cu"
-//#include "../mpui/mpui.h"
+
+#ifdef __MPUI__
+#include "../mpui/mpui.h"
+#define __MPUI__HOSTNAME__ ""
+#endif
 
 // ----------------------------------------------------------------------------
 // main() function
@@ -27,9 +31,11 @@ int main(int argc, char **argv)
   initParameters(h__P, simulation_time, r, c, s); 
   initDomainBoundaries(h__mb_bounds, 1, r-1, 1, c-1, 0, s);
 
-  //mpui::MPUI_WSize wsize = {c, r, s};
-  //mpui::MPUI_Session *session;
-  //mpui::MPUI_Init(mpui::MPUI_Mode::HUB, wsize, session);
+  #ifdef __MPUI__
+  mpui::MPUI_WSize wsize = {c, r, s};
+  mpui::MPUI_Session *session;
+  mpui::MPUI_Init(mpui::MPUI_Mode::SOURCE, wsize, session);
+  #endif
   
   const dim3 block_size( blocksize_x, blocksize_y, blocksize_z );
   const dim3 grid_size ( ceil(c / (float)block_size.x), ceil(r / (float)block_size.y), ceil(s / (float)block_size.z) );
@@ -104,11 +110,15 @@ int main(int argc, char **argv)
        >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
     update_substates_kernel<<< grid_size, block_size >>>( d__substates__, d__wsize );
 
+    
     reduction_size = substate_offset_size;
+    double *d__reduction_buffer = d__substates__ + substate_offset_size*13;
     do
     {
       steering_grid_size = ceil(reduction_size / (float)steering_block_size);
-      simul_steering<<< steering_grid_size, steering_block_size, steering_block_size * sizeof(double) >>>( d__substates__ + substate_offset_size*13, substate_offset_size, d__minvar );
+      simul_steering<<< steering_grid_size, steering_block_size, steering_block_size * sizeof(double) >>>( d__reduction_buffer, reduction_size, d__minvar );
+      
+      d__reduction_buffer = d__minvar;
       reduction_size = steering_grid_size;
     }
     while( steering_grid_size > 1 );
@@ -128,7 +138,10 @@ int main(int argc, char **argv)
     {
       printf("%s in %s at line %d\n", cudaGetErrorString(err), __FILE__, __LINE__);
     }
-    //mpui::MPUI_Recv_local(session, h__Q.h);
+    
+    #ifdef __MPUI__
+    //mpui::MPUI_Send(session, h__Q.h);
+    #endif
   }
 
   double cl_time = static_cast<double>(cl_timer.getTimeMilliseconds()) / 1000.0;
@@ -143,12 +156,15 @@ int main(int argc, char **argv)
   cudaFree( d__mb_bounds   );
   cudaFree( d__wsize       );
   cudaFree( d__minvar      );
-
-  //mpui::MPUI_Finalize(session);
   
   std::string s_path = (std::string)output_prefix + "h_LAST_simulation_time_" + util::converttostringint(simulation_time) + "s.txt";
   saveFile(h__Q.h, r, c, s, s_path);
 
+  #ifdef __MPUI__
+  mpui::MPUI_Send(session, h__Q.h, __MPUI__HOSTNAME__);
+  mpui::MPUI_Finalize(session);
+  #endif
+  
   //printf("Releasing memory...\n");
   deleteSubstates(h__Q);
 

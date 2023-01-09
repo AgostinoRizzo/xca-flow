@@ -17,30 +17,34 @@ endif
 # BUILD                                                                       #
 ###############################################################################
 
-SRC = mbusu_dhpccpp.cu #../mpui/mpui.cpp ../mpui/mpui_hub.cpp
-BIN = mbusu_dhpccpp.o #mpui.o mpui_hub.o
+BUILD = CUDA_VERSION_BASIC
+#BUILD = CUDA_VERSION_TILED_HALO
+#BUILD = CUDA_VERSION_TILED_NO_HALO
+
+SRC = mbusu_dhpccpp.cu
+BIN = mbusu_dhpccpp.o
 EXE = mbusu_dhpccpp
 
-SRC_TILED = mbusu_dhpccpp_cuda_tiled.cu
-BIN_TILED = mbusu_dhpccpp_cuda_tiled.o
-EXE_TILED = mbusu_dhpccpp_cuda_tiled
+SRC_MPUI = mbusu_dhpccpp.cu ../mpui/mpui.cpp ../mpui/mpui_net.cpp
+BIN_MPUI = mbusu_dhpccpp_mpui.o mpui.o mpui_net.o
+EXE_MPUI = mbusu_dhpccpp_mpui
 
 default:$(EXE)
+#default:$(EXE_MPUI)
 
 
 $(EXE): $(BIN)
-	$(CPPC) $^ -o $@ -O3 -g -G 
-# $(CPPC) $^ -lGL -lGLU -lglut -o $@ -O3 -g -G
-
-$(BIN): $(SRC)
-	$(CPPC) $^ -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
-
-
-$(EXE_TILED): $(BIN_TILED)
 	$(CPPC) $^ -o $@ -O3 -g -G
 
-$(BIN_TILED): $(SRC_TILED)
-	$(CPPC) $^ -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
+$(BIN): $(SRC)
+	$(CPPC) $^ -D $(BUILD) -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
+
+
+$(EXE_MPUI): $(BIN_MPUI)
+	$(CPPC) $^ -o $@ -O3 -g -G
+
+$(BIN_MPUI): $(SRC_MPUI)
+	$(CPPC) $^ -D $(BUILD) -D __MPUI__ -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
 
 
 ###############################################################################
@@ -50,17 +54,8 @@ $(BIN_TILED): $(SRC_TILED)
 run:
 	./$(EXE) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
 
-run_gpu1:
-	CUDA_VISIBLE_DEVICES=1 ./$(EXE) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
-
-run_tiled:
+run_mpui:
 	./$(EXE_TILED) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_TILED_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
-
-run_tiled_gpu1:
-	CUDA_VISIBLE_DEVICES=1 ./$(EXE_TILED) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_TILED_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
-
-debug_tiled:
-	cuda-gdb --args ./$(EXE_TILED) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_TILED_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
 
 
 ###############################################################################
@@ -68,7 +63,7 @@ debug_tiled:
 ###############################################################################
 
 clean:
-	rm -f *.o $(OUTPUT_PREFIX)* $(EXE) $(EXE_TILED)
+	rm -f *.o $(OUTPUT_PREFIX)* $(EXE) $(EXE_MPUI)
 
 wipe:
 	rm -f *.o $(OUTPUT_PREFIX)*
