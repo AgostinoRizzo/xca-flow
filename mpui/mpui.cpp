@@ -1,4 +1,5 @@
 #include "mpui.h"
+#include <unistd.h>
 
 namespace mpui {
 
@@ -9,20 +10,29 @@ MPUI_Init( MPUI_Mode mode, MPUI_WSize wsize, MPUI_Session *&session )
     session->mode = mode;
     session->wsize = wsize;
     session->hubloopth = nullptr;
+    session->sockfd = -1;
+    session->seqn = 0;
 
+    #ifdef __MPUI_HUB__
     if ( mode == MPUI_Mode::HUB )
     {
         MPUI_Hub_init( session->hubloopth );
         MPUI_Hub_filter( -734.0f );
         MPUI_Hub_setWSize( session->wsize.x, session->wsize.y, session->wsize.z );
     }
+    #endif
 }
 
 void
 MPUI_Finalize( MPUI_Session *&session )
 {
+    #ifdef __MPUI_HUB__
     if ( session->mode == MPUI_Mode::HUB )
         MPUI_Hub_finalize( session->hubloopth );
+    else
+    #endif
+    
+    if ( session->sockfd >= 0 ) close(session->sockfd);
     delete session;
     session = nullptr;
 }
@@ -30,7 +40,9 @@ MPUI_Finalize( MPUI_Session *&session )
 void
 MPUI_Recv_local( MPUI_Session *session, double *buff )
 {
+    #ifdef __MPUI_HUB__
     MPUI_Hub_setBuffer(buff, session->wsize.x, session->wsize.y, session->wsize.z);
+    #endif
 }
 
 }

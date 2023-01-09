@@ -11,8 +11,8 @@ endif
 # BUILD                                                                       #
 ###############################################################################
 
-SRC = $(APP).cpp ../mpui.cpp ../mpui_hub.cpp
-BIN = $(APP).o mpui.o mpui_hub.o
+SRC = $(APP).cpp ../mpui.cpp ../mpui_hub.cpp ../mpui_net.cpp
+BIN = $(APP).o mpui.o mpui_hub.o mpui_net.o
 EXE = $(APP)
 
 default:$(EXE)
@@ -21,7 +21,7 @@ $(EXE): $(BIN)
 	$(CPPC) $^ -lGL -lGLU -lglut -o $@ -O3 -fopenmp
 
 $(BIN): $(SRC)
-	$(CPPC) $^ -lGL -lGLU -lglut -c -O3 -fopenmp
+	$(CPPC) $^ -D __MPUI_HUB__ -c -O3 -fopenmp
 
 ###############################################################################
 # EXECUTION                                                                   #
@@ -29,6 +29,12 @@ $(BIN): $(SRC)
 
 run:
 	./$(EXE)
+
+run_mpui_source:
+	./$(EXE) | nc -u localhost 4320
+
+run_mpui_hub:
+	nc -u -l 4320 | ./$(EXE)
 
 ###############################################################################
 # CLEAN                                                                       #
