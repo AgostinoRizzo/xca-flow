@@ -21,16 +21,16 @@ BUILD = CUDA_VERSION_BASIC
 #BUILD = CUDA_VERSION_TILED_HALO
 #BUILD = CUDA_VERSION_TILED_NO_HALO
 
-SRC = mbusu_dhpccpp.cu
-BIN = mbusu_dhpccpp.o
-EXE = mbusu_dhpccpp
+#SRC = mbusu_dhpccpp.cu
+#BIN = mbusu_dhpccpp.o
+#EXE = mbusu_dhpccpp
 
-SRC_MPUI = mbusu_dhpccpp.cu ../mpui/mpui.cpp ../mpui/mpui_net.cpp
-BIN_MPUI = mbusu_dhpccpp_mpui.o mpui.o mpui_net.o
-EXE_MPUI = mbusu_dhpccpp_mpui
+SRC_MPUI = mbusu_dhpccpp.cu ../mpui/mpui.cpp ../mpui/mpui_sck.cpp
+BIN_MPUI = mbusu_dhpccpp.o mpui.o mpui_sck.o
+EXE_MPUI = mbusu_dhpccpp
 
-default:$(EXE)
-#default:$(EXE_MPUI)
+#default:$(EXE)
+default:$(EXE_MPUI)
 
 
 $(EXE): $(BIN)
@@ -55,7 +55,7 @@ run:
 	./$(EXE) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
 
 run_mpui:
-	./$(EXE_TILED) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_TILED_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
+	./$(EXE_MPUI) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
 
 
 ###############################################################################

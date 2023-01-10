@@ -14,7 +14,8 @@ int main()
     double *buffer = new double[buffsize];
     for ( int i=0; i<buffsize; ++i ) buffer[i] = -734.0f;
     
-    mpui::MPUI_Recv(session, buffer);
+    while ( !mpui::MPUI_Flag_EOF(session) )
+        mpui::MPUI_Recv(session, buffer);
     
     mpui::MPUI_Finalize(session);
     delete[] buffer;

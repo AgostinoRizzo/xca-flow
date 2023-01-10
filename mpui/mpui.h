@@ -27,14 +27,18 @@ struct MPUI_Session
     int sockfd;
     struct sockaddr_in hubaddr;
     unsigned int seqn;
+
+    struct timespec lsend_time;
+    bool eof;
 };
 
 void MPUI_Init      ( MPUI_Mode mode, MPUI_WSize wsize, MPUI_Session *&session );
 void MPUI_Finalize  ( MPUI_Session *&session );
 
-int  MPUI_Send( MPUI_Session *session, double *buff, const char *hostname );
-int  MPUI_Recv( MPUI_Session *session, double *buff );
+int  MPUI_Send      ( MPUI_Session *session, double *buff, const char *hostname, unsigned long dt=0 );
+int  MPUI_Recv      ( MPUI_Session *session, double *buff );
 void MPUI_Recv_local( MPUI_Session *session, double *buff );
+bool MPUI_Flag_EOF  ( MPUI_Session *session );
 
 #ifdef __MPUI_HUB__
 void MPUI_Hub_init     ( std::thread *&loopth );

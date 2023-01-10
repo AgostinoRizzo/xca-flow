@@ -11,8 +11,8 @@ endif
 # BUILD                                                                       #
 ###############################################################################
 
-SRC = $(APP).cpp ../mpui.cpp ../mpui_hub.cpp ../mpui_net.cpp
-BIN = $(APP).o mpui.o mpui_hub.o mpui_net.o
+SRC = $(APP).cpp ../mpui.cpp ../mpui_hub.cpp ../mpui_sck.cpp
+BIN = $(APP).o mpui.o mpui_hub.o mpui_sck.o
 EXE = $(APP)
 
 default:$(EXE)
@@ -31,10 +31,10 @@ run:
 	./$(EXE)
 
 run_mpui_source:
-	./$(EXE) | nc -u localhost 4320
+	./$(EXE)
 
 run_mpui_hub:
-	nc -u -l 4320 | ./$(EXE)
+	python3 ../mpui_cin.py | ./$(EXE)
 
 ###############################################################################
 # CLEAN                                                                       #

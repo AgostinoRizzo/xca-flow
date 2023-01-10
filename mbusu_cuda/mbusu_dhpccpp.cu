@@ -1,9 +1,10 @@
 #include "mbusu_dhpccpp.hpp"
 #include "mbusu_kernel.cu"
 
-#ifdef __MPUI__
+#if defined(__MPUI__)
 #include "../mpui/mpui.h"
-#define __MPUI__HOSTNAME__ ""
+#define  __MPUI_HOSTNAME__ "127.0.0.1"
+#define  __MPUI_DT__ 500 
 #endif
 
 // ----------------------------------------------------------------------------
@@ -110,7 +111,6 @@ int main(int argc, char **argv)
        >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
     update_substates_kernel<<< grid_size, block_size >>>( d__substates__, d__wsize );
 
-    
     reduction_size = substate_offset_size;
     double *d__reduction_buffer = d__substates__ + substate_offset_size*13;
     do
@@ -140,7 +140,8 @@ int main(int argc, char **argv)
     }
     
     #ifdef __MPUI__
-    //mpui::MPUI_Send(session, h__Q.h);
+    cudaMemcpy( h__Q.__substates__ + substate_offset_size*9, d__substates__ + substate_offset_size*9, substate_offset_size * sizeof(double), cudaMemcpyDeviceToHost );
+    mpui::MPUI_Send(session, h__Q.h, __MPUI_HOSTNAME__, __MPUI_DT__);
     #endif
   }
 
@@ -161,7 +162,7 @@ int main(int argc, char **argv)
   saveFile(h__Q.h, r, c, s, s_path);
 
   #ifdef __MPUI__
-  mpui::MPUI_Send(session, h__Q.h, __MPUI__HOSTNAME__);
+  mpui::MPUI_Send(session, h__Q.h, __MPUI_HOSTNAME__, __MPUI_DT__);
   mpui::MPUI_Finalize(session);
   #endif
   
