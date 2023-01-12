@@ -1,3 +1,4 @@
+#define __MPUI_HUB__
 #include <string>
 #include "../mpui.h"
 
@@ -38,9 +39,11 @@ int main()
     
     mpui::MPUI_Session *session;
     mpui::MPUI_Init(mpui::MPUI_Mode::HUB, wsize, session);
+    mpui::MPUI_Hub_setRange( -730.0, 5600.0 );
+    mpui::MPUI_Hub_filter( -734.0f );
 
     double *buffer = new double[wsize.x * wsize.y * wsize.z];
-    readBuffer( buffer, wsize.y, wsize.x, wsize.z, "output_h_LAST_simulation_time_100000s.txt" );
+    readBuffer( buffer, wsize.y, wsize.x, wsize.z, "output_h_LAST_simulation_time_864000s.txt" );
     mpui::MPUI_Recv_local(session, buffer);
     
     mpui::MPUI_Finalize(session);

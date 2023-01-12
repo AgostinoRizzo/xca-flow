@@ -20,7 +20,6 @@ MPUI_Init( MPUI_Mode mode, MPUI_WSize wsize, MPUI_Session *&session )
     if ( mode == MPUI_Mode::HUB )
     {
         MPUI_Hub_init( session->hubloopth );
-        MPUI_Hub_filter( -734.0f );
         MPUI_Hub_setWSize( session->wsize.x, session->wsize.y, session->wsize.z );
     }
     #endif

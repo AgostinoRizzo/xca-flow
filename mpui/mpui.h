@@ -45,6 +45,7 @@ void MPUI_Hub_init     ( std::thread *&loopth );
 void MPUI_Hub_finalize ( std::thread *&loopth );
 void MPUI_Hub_setWSize ( int xsize, int ysize, int zsize );
 void MPUI_Hub_setBuffer( double *buff, int xsize, int ysize, int zsize );
+void MPUI_Hub_setRange ( double l, double u );
 void MPUI_Hub_filter   ( double threshold );
 bool MPUI_Hub_onexit   ();
 #endif

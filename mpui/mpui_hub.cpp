@@ -30,8 +30,10 @@
 #define WINDOW_WIDTH  700
 #define WINDOW_HEIGHT 500
 
-float xrot = 0.0f;
-float yrot = 0.0f;
+#define AXIS_LENGTH 0.08
+
+float xrot = 35.0f;
+float yrot = -35.0f;
 
 float xdiff = 100.0f;
 float ydiff = 100.0f;
@@ -40,7 +42,7 @@ float origin_x = 0.0f;
 float origin_y = 0.0f;
 float origin_z = 0.0f;
 
-float zoom      = 10.0f;
+float zoom      = 20.0f;
 float resize_f  = 1.0f;
 int   mouseDown = 0;
 
@@ -48,6 +50,8 @@ double    *displaybuff      = nullptr;
 int        buff_xsize       = 0;
 int        buff_ysize       = 0;
 int        buff_zsize       = 0;
+double     scalar_l         = 0.0;
+double     scalar_u         = 1.0;
 double     filter_threshold = 0.0f;
 bool       onexit           = false;
 std::mutex glock;
@@ -71,6 +75,68 @@ const float CELL_SHADOW[] =
 	0.05f,  // bottom
 };
 
+
+void drawAxis()
+{
+	glTranslatef(origin_x, origin_y, origin_z);
+	glLineWidth(2.0f);
+
+	glBegin(GL_LINES);
+
+	//
+	// draw axis
+	//
+
+	// x axis
+	glColor3f   (1.0f, 0.0f, 0.0f);
+	glVertex3f  (0.0, 0.0, 0.0);
+	glVertex3f  (AXIS_LENGTH, 0.0, 0.0);
+
+	// y axis
+	glColor3f(0.0f, 1.0f, 0.0f);
+	glVertex3f(0.0, 0.0, 0.0);
+	glVertex3f(0.0, 0.0, AXIS_LENGTH);
+
+	// z axis
+	glColor3f(0.0f, 0.0f, 1.0f);
+	glVertex3f(0.0, 0.0, 0.0);
+	glVertex3f(0.0, -AXIS_LENGTH, 0.0);
+
+	glEnd();
+
+	//
+	// draw axis cones
+	//
+
+	glPushMatrix();
+	
+	// x axis cone
+	glTranslatef (AXIS_LENGTH, 0.0, 0.0);
+	glRotatef    (90.0, 0.0, 1.0, 0.0);
+	glColor3f    (1.0f, 0.0f, 0.0f);
+	glutSolidCone(0.01, 0.02, 40, 12);
+	glRotatef    (-90.0, 0.0, 1.0, 0.0);
+	glTranslatef (-AXIS_LENGTH, 0.0, 0.0);
+
+	// y axis cone
+	glTranslatef (0.0, 0.0, AXIS_LENGTH);
+	glColor3f    (0.0f, 1.0f, 0.0f);
+	glutSolidCone(0.01, 0.02, 40, 12);
+	glTranslatef (0.0, 0.0, -AXIS_LENGTH);
+
+	// z axis cone
+	glTranslatef (0.0, -AXIS_LENGTH, 0.0);
+	glRotatef    (90.0, 1.0, 0.0, 0.0);
+	glColor3f    (0.0f, 0.0f, 1.0f);
+	glutSolidCone(0.01, 0.02, 40, 12);
+	glRotatef    (-90.0, 1.0, 0.0, 0.0);
+	glTranslatef (0.0, AXIS_LENGTH, 0.0);
+	
+	glPopMatrix();
+
+	glLineWidth(1.0f);
+	glTranslatef(-origin_x, -origin_y, -origin_z);
+}
 
 void drawCell( int i, int j, int k, Color color, bool hiddenNeHood[] )
 {
@@ -200,8 +266,10 @@ void display(void)
 				hiddenCell( i_cell, j_cell, k_cell+1 )   // bottom
 			};
 
-			cellValue += 734.0f;
-			double percCellValue = cellValue / 6334.0f;
+			if      ( cellValue < scalar_l ) cellValue = scalar_l;
+			else if ( cellValue > scalar_u ) cellValue = scalar_u;
+			
+			double percCellValue = (cellValue-scalar_l) / (scalar_u-scalar_l);
 
 			ColorRange crange;
 			Color color = crange.get(percCellValue);
@@ -211,11 +279,19 @@ void display(void)
 	}
 
 	drawLimits();
+	drawAxis();
 
 	glock.unlock();
 
 	glFlush();
 	glutSwapBuffers();
+}
+
+void idle()
+{
+	glock.lock();
+	glutPostRedisplay();
+	glock.unlock();
 }
 
 void resize(int w, int h)
@@ -316,6 +392,7 @@ MPUI_Hub_init( std::thread *&loopth )
 	glutCreateWindow(WINDOW_TITLE);
 
 	glutDisplayFunc(display);
+	glutIdleFunc(idle);
 	glutKeyboardFunc(keyboard);
 	glutMouseFunc(mouse);
 	glutMotionFunc(mouseMotion);
@@ -381,6 +458,21 @@ MPUI_Hub_setBuffer( double *buff, int xsize, int ysize, int zsize )
 	buff_ysize = ysize;
 	buff_zsize = zsize;
 	
+	glutPostRedisplay();
+	glock.unlock();
+}
+
+void
+MPUI_Hub_setRange( double l, double u )
+{
+	glock.lock();
+	if ( onexit )
+	{
+		glock.unlock();
+		return;
+	}
+	scalar_l = l;
+	scalar_u = u;
 	glutPostRedisplay();
 	glock.unlock();
 }

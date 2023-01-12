@@ -1,3 +1,4 @@
+#define __MPUI_HUB__
 #include "../mpui.h"
 
 int main()
@@ -9,6 +10,8 @@ int main()
     
     mpui::MPUI_Session *session;
     mpui::MPUI_Init(mpui::MPUI_Mode::HUB, wsize, session);
+    mpui::MPUI_Hub_setRange( -730.0, 5600.0 );
+    mpui::MPUI_Hub_filter( -734.0f );
 
     const unsigned int buffsize = wsize.x * wsize.y * wsize.z;
     double *buffer = new double[buffsize];
