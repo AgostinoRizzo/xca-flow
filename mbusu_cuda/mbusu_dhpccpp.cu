@@ -137,6 +137,7 @@ int main(int argc, char **argv)
     if ( err != cudaSuccess )
     {
       printf("%s in %s at line %d\n", cudaGetErrorString(err), __FILE__, __LINE__);
+      break;
     }
     
     #ifdef __MPUI__
