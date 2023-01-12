@@ -37,14 +37,14 @@ $(EXE): $(BIN)
 	$(CPPC) $^ -o $@ -O3 -g -G
 
 $(BIN): $(SRC)
-	$(CPPC) $^ -D $(BUILD) -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
+	$(CPPC) $^ -D ROWS=$(ROWS) -D COLS=$(COLS) -D SLICES=$(SLICES) -D $(BUILD) -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
 
 
 $(EXE_MPUI): $(BIN_MPUI)
 	$(CPPC) $^ -o $@ -O3 -g -G
 
 $(BIN_MPUI): $(SRC_MPUI)
-	$(CPPC) $^ -D $(BUILD) -D __MPUI__ -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
+	$(CPPC) $^ -D ROWS=$(ROWS) -D COLS=$(COLS) -D SLICES=$(SLICES) -D $(BUILD) -D __MPUI__ -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
 
 
 ###############################################################################
@@ -52,10 +52,10 @@ $(BIN_MPUI): $(SRC_MPUI)
 ###############################################################################
 
 run:
-	./$(EXE) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
+	./$(EXE) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
 
 run_mpui:
-	./$(EXE_MPUI) $(ROWS) $(COLS) $(SLICES) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
+	./$(EXE_MPUI) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
 
 
 ###############################################################################

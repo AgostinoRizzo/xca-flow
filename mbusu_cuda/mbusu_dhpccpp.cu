@@ -12,9 +12,6 @@
 // ----------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
-  const int     r               = atoi(argv[ROWS_ID]);
-  const int     c               = atoi(argv[COLS_ID]);
-  const int     s               = atoi(argv[LAYERS_ID]);
   const char   *input_ks_path   = argv[INPUT_KS_ID];
   const double  simulation_time = atoi(argv[SIMUALITION_TIME_ID]);
   const char   *output_prefix   = argv[OUTPUT_PREFIX_ID];
@@ -24,13 +21,10 @@ int main(int argc, char **argv)
 
   Substates        h__Q;
   Parameters       h__P;
-  DomainBoundaries h__mb_bounds;
-  int              h__wsize[] = { r, c, s };
 
-  const int substsize = allocSubstates(h__Q, r, c, s);
-  readKs(h__Q.ks, r, c, s, input_ks_path);
-  initParameters(h__P, simulation_time, r, c, s); 
-  initDomainBoundaries(h__mb_bounds, 1, r-1, 1, c-1, 0, s);
+  const int substsize = allocSubstates(h__Q);
+  readKs(h__Q.ks, input_ks_path);
+  initParameters(h__P, simulation_time);
 
   #ifdef __MPUI__
   mpui::MPUI_WSize wsize = {c, r, s};
@@ -39,12 +33,12 @@ int main(int argc, char **argv)
   #endif
   
   const dim3 block_size( blocksize_x, blocksize_y, blocksize_z );
-  const dim3 grid_size ( ceil(c / (float)block_size.x), ceil(r / (float)block_size.y), ceil(s / (float)block_size.z) );
+  const dim3 grid_size ( ceil(COLS / (float)block_size.x), ceil(ROWS / (float)block_size.y), ceil(SLICES / (float)block_size.z) );
 
   const unsigned int steering_block_size = block_size.x * block_size.y * block_size.z;
-        unsigned int steering_grid_size  = ceil(r*c*s / (float)steering_block_size);
+        unsigned int steering_grid_size  = ceil(SIZE / (float)steering_block_size);
 
-  const int substate_offset_size = r*c*s;
+  const int substate_offset_size = SIZE;
   int reduction_size;
 
   #ifdef CUDA_VERSION_TILED_HALO
@@ -54,25 +48,19 @@ int main(int argc, char **argv)
 
   double           *d__substates__;
   Parameters       *d__P;
-  DomainBoundaries *d__mb_bounds;
-  int              *d__wsize;
   double           *d__minvar;
   cudaMalloc( &d__substates__,     substsize * sizeof(double) );
   cudaMalloc( &d__P,                           sizeof(Parameters) );
-  cudaMalloc( &d__mb_bounds,                   sizeof(DomainBoundaries) );
-  cudaMalloc( &d__wsize,                   3 * sizeof(int) );
   cudaMalloc( &d__minvar, steering_grid_size * sizeof(double) );
 
   cudaMemcpy( d__substates__,  h__Q.__substates__, substsize * sizeof(double),           cudaMemcpyHostToDevice );
   cudaMemcpy( d__P,           &h__P,                           sizeof(Parameters),       cudaMemcpyHostToDevice );
-  cudaMemcpy( d__mb_bounds,   &h__mb_bounds,                   sizeof(DomainBoundaries), cudaMemcpyHostToDevice );
-  cudaMemcpy( d__wsize,        h__wsize,                   3 * sizeof(int),              cudaMemcpyHostToDevice );
 
   //
   // Apply the simulation init kernel to the whole domain
   //
-  simul_init_kernel      <<< grid_size, block_size >>>( d__substates__, d__P, d__wsize );
-  update_substates_kernel<<< grid_size, block_size >>>( d__substates__, d__wsize );
+  simul_init_kernel      <<< grid_size, block_size >>>( d__substates__, d__P );
+  update_substates_kernel<<< grid_size, block_size >>>( d__substates__ );
 
   //
   // simulation loop
@@ -89,7 +77,7 @@ int main(int argc, char **argv)
     //     3. apply the mass balance kernel to the domain bounded by mb_bounds
     //     4. simulation steering
     //
-    reset_flows_kernel     <<< grid_size, block_size >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
+    reset_flows_kernel     <<< grid_size, block_size >>>( d__substates__, d__P );
     compute_flows_kernel   <<< grid_size,
     #if defined(CUDA_VERSION_TILED_HALO)
       tiled_halo_block_size, sharedmem_size * sizeof(double)
@@ -98,7 +86,7 @@ int main(int argc, char **argv)
     #else
       block_size
     #endif
-       >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
+       >>>( d__substates__, d__P );
     
     mass_balance_kernel    <<< grid_size,
     #if defined(CUDA_VERSION_TILED_HALO)
@@ -108,8 +96,8 @@ int main(int argc, char **argv)
     #else
       block_size
     #endif
-       >>>( d__substates__, d__P, d__mb_bounds, d__wsize );
-    update_substates_kernel<<< grid_size, block_size >>>( d__substates__, d__wsize );
+       >>>( d__substates__, d__P );
+    update_substates_kernel<<< grid_size, block_size >>>( d__substates__ );
 
     reduction_size = substate_offset_size;
     double *d__reduction_buffer = d__substates__ + substate_offset_size*13;
@@ -155,12 +143,10 @@ int main(int argc, char **argv)
   
   cudaFree( d__substates__ );
   cudaFree( d__P           );
-  cudaFree( d__mb_bounds   );
-  cudaFree( d__wsize       );
   cudaFree( d__minvar      );
   
   std::string s_path = (std::string)output_prefix + "h_LAST_simulation_time_" + util::converttostringint(simulation_time) + "s.txt";
-  saveFile(h__Q.h, r, c, s, s_path);
+  saveFile(h__Q.h, s_path);
 
   #ifdef __MPUI__
   mpui::MPUI_Send(session, h__Q.h, __MPUI_HOSTNAME__, __MPUI_DT__);

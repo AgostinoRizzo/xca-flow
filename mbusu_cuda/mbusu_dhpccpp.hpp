@@ -18,17 +18,29 @@
 // ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
+// MBUSU-DOMAIN size and boundaries
+// ----------------------------------------------------------------------------
+#define ROWS   100
+#define COLS   100
+#define SLICES  50
+#define SIZE   (ROWS*COLS*SLICES)
+#define MB_BOUNDS_i_start 1
+#define MB_BOUNDS_i_end   (ROWS-1)
+#define MB_BOUNDS_j_start 1
+#define MB_BOUNDS_j_end   (COLS-1)
+#define MB_BOUNDS_k_start 0
+#define MB_BOUNDS_k_end   SLICES
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
 // I/O parameters used to index argv[]
 // ----------------------------------------------------------------------------
-#define ROWS_ID 1
-#define COLS_ID 2
-#define LAYERS_ID 3
-#define INPUT_KS_ID 4
-#define SIMUALITION_TIME_ID 5
-#define OUTPUT_PREFIX_ID 6
-#define BLOCKSIZE_X_ID 7
-#define BLOCKSIZE_Y_ID 8
-#define BLOCKSIZE_Z_ID 9
+#define INPUT_KS_ID 1
+#define SIMUALITION_TIME_ID 2
+#define OUTPUT_PREFIX_ID 3
+#define BLOCKSIZE_X_ID 4
+#define BLOCKSIZE_Y_ID 5
+#define BLOCKSIZE_Z_ID 6
 // ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
@@ -46,26 +58,6 @@
 #define BUF_SET3D(M, rows, columns, slices, n, i, j, k, value) ( (M)[( ((n)*(rows)*(columns)*(slices)) + ((k)*(rows)*(columns)) + ((i)*(columns)) + (j) )] = (value) )
 #define BUF_GET3D(M, rows, columns, slices, n, i, j, k) ( M[( ((n)*(rows)*(columns)*(slices)) + ((k)*(rows)*(columns)) + ((i)*(columns)) + (j) )] )
 // ----------------------------------------------------------------------------
-
-struct DomainBoundaries
-{
-  int i_start;
-  int i_end;
-  int j_start;
-  int j_end;
-  int k_start;
-  int k_end;
-};
-
-void initDomainBoundaries(DomainBoundaries& B, int i_start, int i_end, int j_start, int j_end, int k_start, int k_end)
-{
-  B.i_start = i_start;
-  B.i_end   = i_end; 
-  B.j_start = j_start;
-  B.j_end   = j_end;
-  B.k_start = k_start;
-  B.k_end   = k_end;
-}
 
 //
 // Substates struct is declared as a linear 4D buffer (__substates__)
@@ -96,34 +88,33 @@ struct Substates
 };
 
 __host__ __device__
-void syncSubstatesPtrs(Substates &Q, int offset_size )
+void syncSubstatesPtrs(Substates &Q)
 {
   Q.ks               = Q.__substates__;
 
-  Q.teta             = Q.__substates__ + offset_size;
-  Q.teta_next        = Q.__substates__ + offset_size*2;
-  Q.moist_cont       = Q.__substates__ + offset_size*3;
-  Q.moist_cont_next  = Q.__substates__ + offset_size*4;
-  Q.psi              = Q.__substates__ + offset_size*5;
-  Q.psi_next         = Q.__substates__ + offset_size*6;
-  Q.k                = Q.__substates__ + offset_size*7;
-  Q.k_next           = Q.__substates__ + offset_size*8;
-  Q.h                = Q.__substates__ + offset_size*9;
-  Q.h_next           = Q.__substates__ + offset_size*10;
-  Q.dqdh             = Q.__substates__ + offset_size*11;
-  Q.dqdh_next        = Q.__substates__ + offset_size*12;
-  Q.convergence      = Q.__substates__ + offset_size*13;
-  Q.convergence_next = Q.__substates__ + offset_size*14;
+  Q.teta             = Q.__substates__ + SIZE;
+  Q.teta_next        = Q.__substates__ + SIZE*2;
+  Q.moist_cont       = Q.__substates__ + SIZE*3;
+  Q.moist_cont_next  = Q.__substates__ + SIZE*4;
+  Q.psi              = Q.__substates__ + SIZE*5;
+  Q.psi_next         = Q.__substates__ + SIZE*6;
+  Q.k                = Q.__substates__ + SIZE*7;
+  Q.k_next           = Q.__substates__ + SIZE*8;
+  Q.h                = Q.__substates__ + SIZE*9;
+  Q.h_next           = Q.__substates__ + SIZE*10;
+  Q.dqdh             = Q.__substates__ + SIZE*11;
+  Q.dqdh_next        = Q.__substates__ + SIZE*12;
+  Q.convergence      = Q.__substates__ + SIZE*13;
+  Q.convergence_next = Q.__substates__ + SIZE*14;
 
-  Q.F                = Q.__substates__ + offset_size*15;
+  Q.F                = Q.__substates__ + SIZE*15;
 }
 
-int allocSubstates(Substates &Q, int r, int c, int s)
+int allocSubstates(Substates &Q)
 {
-  const int size  = r*c*s;
-  Q.__substates__ = util::allocBuffer4D(15 + ADJACENT_CELLS, r, c, s);
-  syncSubstatesPtrs( Q, size );
-  return (15 + ADJACENT_CELLS) * size;
+  Q.__substates__ = util::allocBuffer4D(15 + ADJACENT_CELLS, ROWS, COLS, SLICES);
+  syncSubstatesPtrs( Q );
+  return (15 + ADJACENT_CELLS) * SIZE;
 }
 
 void deleteSubstates(Substates& Q) { free(Q.__substates__); }
@@ -152,13 +143,13 @@ struct Parameters
   double simulation_time;
 };
 
-void initParameters(Parameters& P, double simulation_time, int r, int c, int s)
+void initParameters(Parameters& P, double simulation_time)
 {
-  P.YOUT = c-1;
+  P.YOUT = COLS-1;
   P.YIN = 0;
-  P.XE = r-1;
+  P.XE = ROWS-1;
   P.XW = 0;
-  P.ZSUP = s-1;
+  P.ZSUP = SLICES-1;
   P.ZFONDO = 0;
 
   P.h_init = 734;
@@ -179,7 +170,7 @@ void initParameters(Parameters& P, double simulation_time, int r, int c, int s)
 // ----------------------------------------------------------------------------
 // I/O functions
 // ----------------------------------------------------------------------------
-void readKs(double* ks, int r, int c, int s, std::string path)
+void readKs(double* ks, std::string path)
 {
   FILE *f = fopen(path.c_str(), "r");
   if (f == NULL)
@@ -190,29 +181,29 @@ void readKs(double* ks, int r, int c, int s, std::string path)
   //printf("read succefully %s \n", path.c_str());
   char str[256];
   int i, j, k;
-  for (k = 0; k < s; k++)
-    for (i = 0; i < r; i++)
-      for (j = 0; j < c; j++)
+  for (k = 0; k < SLICES; k++)
+    for (i = 0; i < ROWS; i++)
+      for (j = 0; j < COLS; j++)
       {
         fscanf(f, "%s", str);
-        SET3D(ks, r, c, i, j, k, atof(str));
+        SET3D(ks, ROWS, COLS, i, j, k, atof(str));
       }
   fclose(f);
 }
 
-void saveFile(double* sub, int r, int c, int s, std::string nameFile)
+void saveFile(double* sub, std::string nameFile)
 {
   int i, j, k;
   double moist_print;
 
   FILE *stream = fopen(nameFile.c_str(), "w");
-  for (k = 0; k < s; k++)
+  for (k = 0; k < SLICES; k++)
   {
-    for (i = 0; i < r; i++)
+    for (i = 0; i < ROWS; i++)
     {
-      for (j = 0; j < c; j++)
+      for (j = 0; j < COLS; j++)
       {
-        moist_print = GET3D(sub, r, c, i, j, k);
+        moist_print = GET3D(sub, ROWS, COLS, i, j, k);
         fprintf(stream, "%.8f ", moist_print);
       }
       fprintf(stream, "\n");

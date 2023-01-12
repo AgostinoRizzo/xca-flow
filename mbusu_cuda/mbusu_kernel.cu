@@ -1,15 +1,15 @@
 #include "mbusu_core.cu"
 
 __device__
-void updateSubstates( Substates &d__Q, int r, int c, int i, int j, int k )
+void updateSubstates( Substates &d__Q, int i, int j, int k )
 {
-  SET3D( d__Q.dqdh,        r, c, i, j, k, GET3D(d__Q.dqdh_next,        r, c, i, j, k) );
-  SET3D( d__Q.psi,         r, c, i, j, k, GET3D(d__Q.psi_next,         r, c, i, j, k) );
-  SET3D( d__Q.k,           r, c, i, j, k, GET3D(d__Q.k_next,           r, c, i, j, k) );
-  SET3D( d__Q.h,           r, c, i, j, k, GET3D(d__Q.h_next,           r, c, i, j, k) );
-  SET3D( d__Q.teta,        r, c, i, j, k, GET3D(d__Q.teta_next,        r, c, i, j, k) );
-  SET3D( d__Q.moist_cont,  r, c, i, j, k, GET3D(d__Q.moist_cont_next,  r, c, i, j, k) );
-  SET3D( d__Q.convergence, r, c, i, j, k, GET3D(d__Q.convergence_next, r, c, i, j, k) );
+  SET3D( d__Q.dqdh,        ROWS, COLS, i, j, k, GET3D(d__Q.dqdh_next,        ROWS, COLS, i, j, k) );
+  SET3D( d__Q.psi,         ROWS, COLS, i, j, k, GET3D(d__Q.psi_next,         ROWS, COLS, i, j, k) );
+  SET3D( d__Q.k,           ROWS, COLS, i, j, k, GET3D(d__Q.k_next,           ROWS, COLS, i, j, k) );
+  SET3D( d__Q.h,           ROWS, COLS, i, j, k, GET3D(d__Q.h_next,           ROWS, COLS, i, j, k) );
+  SET3D( d__Q.teta,        ROWS, COLS, i, j, k, GET3D(d__Q.teta_next,        ROWS, COLS, i, j, k) );
+  SET3D( d__Q.moist_cont,  ROWS, COLS, i, j, k, GET3D(d__Q.moist_cont_next,  ROWS, COLS, i, j, k) );
+  SET3D( d__Q.convergence, ROWS, COLS, i, j, k, GET3D(d__Q.convergence_next, ROWS, COLS, i, j, k) );
 }
 
 // ----------------------------------------------------------------------------
@@ -24,7 +24,7 @@ void updateSubstates( Substates &d__Q, int r, int c, int i, int j, int k )
   const int j = blockIdx.x*blockDim.x + threadIdx.x;                       \
   const int k = blockIdx.z*blockDim.z + threadIdx.z;                       \
                                                                            \
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )          \
+  if ( i >= ROWS || j >= COLS || k >= SLICES )                             \
     return;                                                                \
                                                                            \
   const bool zerothread = threadIdx.x == threadIdx.y == threadIdx.z == 0;  \
@@ -33,40 +33,40 @@ void updateSubstates( Substates &d__Q, int r, int c, int i, int j, int k )
   if ( zerothread )  /* thread 0 */                                        \
   {                                                                        \
     d__Q.__substates__ = d__substates__;                                   \
-    syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );        \
+    syncSubstatesPtrs( d__Q );                                             \
   }                                                                        \
   __syncthreads();
 // ----------------------------------------------------------------------------
 
 __global__
-void update_substates_kernel( double *d__substates__, int d__wsize[] )
+void update_substates_kernel( double *d__substates__ )
 {
   ____KERNEL_BLOCK_PREFACE____
 
-  updateSubstates( d__Q, d__wsize[0], d__wsize[1], i, j, k );
+  updateSubstates( d__Q, i, j, k );
 }
 
 __global__
-void simul_init_kernel( double *d__substates__, Parameters *d__P, int d__wsize[] )
+void simul_init_kernel( double *d__substates__, Parameters *d__P )
 {
   ____KERNEL_BLOCK_PREFACE____
 
-  simulation_init( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], *d__P );
+  simulation_init( i, j, k, d__Q, *d__P );
 }
 
 __global__
-void reset_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
+void reset_flows_kernel( double *d__substates__, Parameters *d__P )
 {
   ____KERNEL_BLOCK_PREFACE____
 
   //
   // Apply the reset flow kernel to the whole domain
   //
-  reset_flows( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2] );
+  reset_flows( i, j, k, d__Q );
 }
 
 __global__
-void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
+void compute_flows_kernel( double *d__substates__, Parameters *d__P )
 {
 #if defined(CUDA_VERSION_TILED_HALO)
 
@@ -84,23 +84,23 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBound
   extern __shared__ double s__Q_h[];
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+  syncSubstatesPtrs( d__Q );
   
   if ( i_halo >= 0 && j_halo >= 0 && k_halo >= 0 &&
-       i_halo < d__wsize[0] && j_halo < d__wsize[1] && k_halo < d__wsize[2] )
-    SET3D( s__Q_h, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.h, d__wsize[0], d__wsize[1], i_halo, j_halo, k_halo) );
+       i_halo < ROWS && j_halo < COLS && k_halo < SLICES )
+    SET3D( s__Q_h, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.h, ROWS, COLS, i_halo, j_halo, k_halo) );
   
   __syncthreads();
 
   if ( threadIdx.x >= TILE_SIZE_X || threadIdx.y >= TILE_SIZE_Y || threadIdx.z >= TILE_SIZE_Z ||
-       i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+       i >= ROWS || j >= COLS || k >= SLICES )
     return;
 
   d__Q.h = s__Q_h;
   //
   // Apply the flow computation kernel to the whole domain
   //
-  compute_flows( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, *d__P );
+  compute_flows( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, blockDim.y, blockDim.x, *d__P );
 
 #elif defined(CUDA_VERSION_TILED_NO_HALO)
 
@@ -108,35 +108,35 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, DomainBound
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
   const int k = blockIdx.z*blockDim.z + threadIdx.z;
 
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+  if ( i >= ROWS || j >= COLS || k >= SLICES )
     return;
   
   Substates d__Q;
   extern __shared__ double s__Q_h[];
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+  syncSubstatesPtrs( d__Q, SIZE );
 
-  SET3D( s__Q_h, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.h, d__wsize[0], d__wsize[1], i, j, k) );
+  SET3D( s__Q_h, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.h, ROWS, COLS, i, j, k) );
   __syncthreads();
 
   //
   // Apply the flow computation kernel to the whole domain
   //
   compute_flows( i, j, k, threadIdx.y, threadIdx.x, threadIdx.z, d__Q, s__Q_h,
-                 d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, blockDim.z, *d__P );
+                 blockDim.y, blockDim.x, blockDim.z, *d__P );
   
 #else
   ____KERNEL_BLOCK_PREFACE____
   //
   // Apply the flow computation kernel to the whole domain
   //
-  compute_flows( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], *d__P );
+  compute_flows( i, j, k, d__Q, *d__P );
 #endif
 }
 
 __global__
-void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBoundaries *d__mb_bounds, int d__wsize[] )
+void mass_balance_kernel( double *d__substates__, Parameters *d__P )
 {
 #if defined(CUDA_VERSION_TILED_HALO)
 
@@ -156,20 +156,20 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
   double *s__Q_F = s__Q_kF + blockDim.x*blockDim.y*blockDim.z;
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+  syncSubstatesPtrs( d__Q, SIZE );
   
   if ( i_halo >= 0 && j_halo >= 0 && k_halo >= 0 &&
-       i_halo < d__wsize[0] && j_halo < d__wsize[1] && k_halo < d__wsize[2] )
+       i_halo < ROWS && j_halo < COLS && k_halo < SLICES )
   {
-    SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, d__wsize[0], d__wsize[1], i_halo, j_halo, k_halo) );
+    SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, ROWS, COLS, i_halo, j_halo, k_halo) );
     for ( int adjc=0; adjc < ADJACENT_CELLS; ++adjc )
-      BUF_SET3D( s__Q_F, blockDim.y, blockDim.x, blockDim.z, adjc, threadIdx.y, threadIdx.x, threadIdx.z, BUF_GET3D(d__Q.F, d__wsize[0], d__wsize[1], d__wsize[2], adjc, i_halo, j_halo, k_halo) );
+      BUF_SET3D( s__Q_F, blockDim.y, blockDim.x, blockDim.z, adjc, threadIdx.y, threadIdx.x, threadIdx.z, BUF_GET3D(d__Q.F, ROWS, COLS, SLICES, adjc, i_halo, j_halo, k_halo) );
   }
   
   __syncthreads();
 
   if ( threadIdx.x >= TILE_SIZE_X || threadIdx.y >= TILE_SIZE_Y || threadIdx.z >= TILE_SIZE_Z ||
-       i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+       i >= ROWS || j >= COLS || k >= SLICES )
     return;
 
   d__Q.k = s__Q_k;
@@ -177,10 +177,10 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
   //
   // Apply the flow computation kernel to the whole domain
   //
-  if ( i >= d__mb_bounds->i_start && i < d__mb_bounds->i_end &&
-       j >= d__mb_bounds->j_start && j < d__mb_bounds->j_end &&
-       k >= d__mb_bounds->k_start && k < d__mb_bounds->k_end )
-  mass_balance( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, blockDim.z, *d__P );
+  if ( i >= MB_BOUNDS_i_start && i < MB_BOUNDS_i_end &&
+       j >= MB_BOUNDS_j_start && j < MB_BOUNDS_j_end &&
+       k >= MB_BOUNDS_k_start && k < MB_BOUNDS_k_end )
+  mass_balance( i, j, k, threadIdx.y+1, threadIdx.x+1, threadIdx.z+1, d__Q, blockDim.y, blockDim.x, blockDim.z, *d__P );
 
 #elif defined(CUDA_VERSION_TILED_NO_HALO)
 
@@ -188,7 +188,7 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
   const int k = blockIdx.z*blockDim.z + threadIdx.z;
 
-  if ( i >= d__wsize[1] || j >= d__wsize[0] || k >= d__wsize[2] )
+  if ( i >= ROWS || j >= COLS || k >= SLICES )
     return;
   
   Substates d__Q;
@@ -197,21 +197,21 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
   double *s__Q_F = s__Q_kF + blockDim.x*blockDim.y*blockDim.z;
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q, d__wsize[0]*d__wsize[1]*d__wsize[2] );
+  syncSubstatesPtrs( d__Q, SIZE );
 
-  SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, d__wsize[0], d__wsize[1], i, j, k) );
+  SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, ROWS, COLS, i, j, k) );
   for ( int adjc=0; adjc < ADJACENT_CELLS; ++adjc )
-    BUF_SET3D( s__Q_F, blockDim.y, blockDim.x, blockDim.z, adjc, threadIdx.y, threadIdx.x, threadIdx.z, BUF_GET3D(d__Q.F, d__wsize[0], d__wsize[1], d__wsize[2], adjc, i, j, k) );
+    BUF_SET3D( s__Q_F, blockDim.y, blockDim.x, blockDim.z, adjc, threadIdx.y, threadIdx.x, threadIdx.z, BUF_GET3D(d__Q.F, ROWS, COLS, SLICES, adjc, i, j, k) );
   __syncthreads();
 
   //
   // Apply the mass balance kernel to the domain bounded by mb_bounds 
   //
-  if ( i >= d__mb_bounds->i_start && i < d__mb_bounds->i_end &&
-       j >= d__mb_bounds->j_start && j < d__mb_bounds->j_end &&
-       k >= d__mb_bounds->k_start && k < d__mb_bounds->k_end )
+  if ( i >= MB_BOUNDS_i_start && i < MB_BOUNDS_i_end &&
+       j >= MB_BOUNDS_j_start && j < MB_BOUNDS_j_end &&
+       k >= MB_BOUNDS_k_start && k < MB_BOUNDS_k_end )
     mass_balance( i, j, k, threadIdx.y, threadIdx.x, threadIdx.z, d__Q, s__Q_k, s__Q_F,
-                  d__wsize[0], d__wsize[1], d__wsize[2], blockDim.y, blockDim.x, blockDim.z, *d__P );
+                  blockDim.y, blockDim.x, blockDim.z, *d__P );
 
 #else
   ____KERNEL_BLOCK_PREFACE____
@@ -219,10 +219,10 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, DomainBounda
   //
   // Apply the mass balance kernel to the domain bounded by mb_bounds 
   //
-  if ( i >= d__mb_bounds->i_start && i < d__mb_bounds->i_end &&
-       j >= d__mb_bounds->j_start && j < d__mb_bounds->j_end &&
-       k >= d__mb_bounds->k_start && k < d__mb_bounds->k_end )
-    mass_balance( i, j, k, d__Q, d__wsize[0], d__wsize[1], d__wsize[2], *d__P );
+  if ( i >= MB_BOUNDS_i_start && i < MB_BOUNDS_i_end &&
+       j >= MB_BOUNDS_j_start && j < MB_BOUNDS_j_end &&
+       k >= MB_BOUNDS_k_start && k < MB_BOUNDS_k_end )
+    mass_balance( i, j, k, d__Q, *d__P );
 #endif
 }
 
