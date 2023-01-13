@@ -87,6 +87,15 @@ struct Substates
   double *F;
 };
 
+// ----------------------------------------------------------------------------
+// Substates size and offsets
+// ----------------------------------------------------------------------------
+#define __SUBSTATE_SIZE__             SIZE
+#define __SUBSTATE_SIZE_BYTES__       SIZE * sizeof(double)
+#define __Q_h__OFFSET__           (SIZE*9)
+#define __Q_convergence_OFFSET__ (SIZE*13)
+// ----------------------------------------------------------------------------
+
 __host__ __device__
 void syncSubstatesPtrs(Substates &Q)
 {

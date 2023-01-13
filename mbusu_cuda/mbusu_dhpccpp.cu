@@ -7,6 +7,9 @@
 #define  __MPUI_DT__ 500 
 #endif
 
+struct CudaKernelBlockConfig3D { dim3 block_size; unsigned long sharedmem_size; };
+struct CudaKernelBlockConfig1D { unsigned int block_size; unsigned long sharedmem_size; };
+
 // ----------------------------------------------------------------------------
 // main() function
 // ----------------------------------------------------------------------------
@@ -32,20 +35,59 @@ int main(int argc, char **argv)
   mpui::MPUI_Init(mpui::MPUI_Mode::SOURCE, wsize, session);
   #endif
   
+  //
+  // CUDA kernel configurations.
+  //
   const dim3 block_size( blocksize_x, blocksize_y, blocksize_z );
   const dim3 grid_size ( ceil(COLS / (float)block_size.x), ceil(ROWS / (float)block_size.y), ceil(SLICES / (float)block_size.z) );
 
   const unsigned int steering_block_size = block_size.x * block_size.y * block_size.z;
         unsigned int steering_grid_size  = ceil(SIZE / (float)steering_block_size);
 
-  const int substate_offset_size = SIZE;
-  int reduction_size;
+  CudaKernelBlockConfig3D compute_flows_blkconfig;
+  CudaKernelBlockConfig3D mass_balance_blkconfig;
+  CudaKernelBlockConfig1D simul_steering_blkconfig{steering_block_size, steering_block_size * sizeof(double)};
 
-  #ifdef CUDA_VERSION_TILED_HALO
-  const dim3 tiled_halo_block_size( blocksize_x+2, blocksize_y+2, blocksize_z+2 );
-  const unsigned int sharedmem_size = tiled_halo_block_size.x * tiled_halo_block_size.y * tiled_halo_block_size.z;
-  #endif
+#if defined(CUDA_VERSION_TILED_HALO)
 
+  const dim3 tiled_halo_block_size    ( blocksize_x+2, blocksize_y+2, blocksize_z+2 );
+  const unsigned int sharedmem_size = tiled_halo_block_size.x * tiled_halo_block_size.y * tiled_halo_block_size.z * sizeof(double);
+
+  compute_flows_blkconfig.block_size     = tiled_halo_block_size;
+  compute_flows_blkconfig.sharedmem_size = block_size.x*block_size.y*block_size.z * sizeof(double);
+
+  mass_balance_blkconfig.block_size      = tiled_halo_block_size;
+  mass_balance_blkconfig.sharedmem_size  = 2 * sharedmem_size * ADJACENT_CELLS
+
+#elif defined(CUDA_VERSION_TILED_NO_HALO)
+
+  compute_flows_blkconfig.block_size     = block_size;
+  compute_flows_blkconfig.sharedmem_size = block_size.x*block_size.y*block_size.z * sizeof(double);
+
+  mass_balance_blkconfig.block_size      = block_size;
+  mass_balance_blkconfig.sharedmem_size  = block_size.x*block_size.y*block_size.z * sizeof(double) * (1 + ADJACENT_CELLS);
+
+#else // CUDA_VERSION_BASIC
+
+  compute_flows_blkconfig.block_size     = block_size;
+  compute_flows_blkconfig.sharedmem_size = 0;
+
+  mass_balance_blkconfig.block_size      = block_size;
+  mass_balance_blkconfig.sharedmem_size  = 0;
+
+#endif
+
+  //
+  // Auxiliary local variables.
+  //
+  int        reduction_size;
+  double    *d__reduction_buffer;
+  double     minVar;
+  cudaError  err;
+
+  //
+  // GPU data structures alloc+memcpy.
+  //
   double           *d__substates__;
   Parameters       *d__P;
   double           *d__minvar;
@@ -53,8 +95,8 @@ int main(int argc, char **argv)
   cudaMalloc( &d__P,                           sizeof(Parameters) );
   cudaMalloc( &d__minvar, steering_grid_size * sizeof(double) );
 
-  cudaMemcpy( d__substates__,  h__Q.__substates__, substsize * sizeof(double),           cudaMemcpyHostToDevice );
-  cudaMemcpy( d__P,           &h__P,                           sizeof(Parameters),       cudaMemcpyHostToDevice );
+  cudaMemcpy( d__substates__,  h__Q.__substates__, substsize * sizeof(double),     cudaMemcpyHostToDevice );
+  cudaMemcpy( d__P,           &h__P,                           sizeof(Parameters), cudaMemcpyHostToDevice );
 
   //
   // Apply the simulation init kernel to the whole domain
@@ -72,56 +114,41 @@ int main(int argc, char **argv)
     
     //
     // Apply the whole simulation cycle:
-    //     1. apply the reset flow kernel to the whole domain
-    //     2. apply the flow computation kernel to the whole domain
-    //     3. apply the mass balance kernel to the domain bounded by mb_bounds
-    //     4. simulation steering
+    // 1. apply the reset flow kernel to the whole domain
+    // 2. apply the flow computation kernel to the whole domain
+    // 3. apply the mass balance kernel to the domain bounded by mb_bounds
+    // 4. simulation steering
     //
-    reset_flows_kernel     <<< grid_size, block_size >>>( d__substates__, d__P );
-    compute_flows_kernel   <<< grid_size,
-    #if defined(CUDA_VERSION_TILED_HALO)
-      tiled_halo_block_size, sharedmem_size * sizeof(double)
-    #elif defined(CUDA_VERSION_TILED_NO_HALO)
-      block_size, block_size.x*block_size.y*block_size.z * sizeof(double)
-    #else
-      block_size
-    #endif
-       >>>( d__substates__, d__P );
-    
-    mass_balance_kernel    <<< grid_size,
-    #if defined(CUDA_VERSION_TILED_HALO)
-      tiled_halo_block_size, sharedmem_size * sizeof(double) + sharedmem_size * sizeof(double) * ADJACENT_CELLS
-    #elif defined(CUDA_VERSION_TILED_NO_HALO)
-      block_size, block_size.x*block_size.y*block_size.z * sizeof(double) * (1 + ADJACENT_CELLS)
-    #else
-      block_size
-    #endif
-       >>>( d__substates__, d__P );
-    update_substates_kernel<<< grid_size, block_size >>>( d__substates__ );
+    reset_flows_kernel      <<< grid_size, block_size >>>( d__substates__, d__P );
+    compute_flows_kernel    <<< grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, d__P );
+    mass_balance_kernel     <<< grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P );
+    update_substates_kernel <<< grid_size, block_size >>>( d__substates__ );
 
-    reduction_size = substate_offset_size;
-    double *d__reduction_buffer = d__substates__ + substate_offset_size*13;
+    reduction_size = __SUBSTATE_SIZE__;
+    d__reduction_buffer = d__substates__ + __Q_convergence_OFFSET__;
     do
     {
       steering_grid_size = ceil(reduction_size / (float)steering_block_size);
-      simul_steering<<< steering_grid_size, steering_block_size, steering_block_size * sizeof(double) >>>( d__reduction_buffer, reduction_size, d__minvar );
+      simul_steering<<< steering_grid_size, simul_steering_blkconfig.block_size, simul_steering_blkconfig.sharedmem_size >>>( d__reduction_buffer, reduction_size, d__minvar );
       
       d__reduction_buffer = d__minvar;
       reduction_size = steering_grid_size;
     }
     while( steering_grid_size > 1 );
 
-    double minVar;
     cudaMemcpy( &minVar, d__minvar, sizeof(double), cudaMemcpyDeviceToHost );
     
     if (minVar > 55.0)
       minVar = 55.0;
     
-    h__P.delta_t = minVar;
-    h__P.delta_t_cum_prec = h__P.delta_t_cum;
-    h__P.delta_t_cum += h__P.delta_t;
+    h__P.delta_t           = minVar;
+    h__P.delta_t_cum_prec  = h__P.delta_t_cum;
+    h__P.delta_t_cum      += h__P.delta_t;
     
-    cudaError err = cudaGetLastError();
+    //
+    // Manage CUDA errors.
+    //
+    err = cudaGetLastError();
     if ( err != cudaSuccess )
     {
       printf("%s in %s at line %d\n", cudaGetErrorString(err), __FILE__, __LINE__);
@@ -129,7 +156,7 @@ int main(int argc, char **argv)
     }
     
     #ifdef __MPUI__
-    cudaMemcpy( h__Q.__substates__ + substate_offset_size*9, d__substates__ + substate_offset_size*9, substate_offset_size * sizeof(double), cudaMemcpyDeviceToHost );
+    cudaMemcpy( h__Q.__substates__ + __Q_h__OFFSET__, d__substates__ + __Q_h__OFFSET__, __SUBSTATE_SIZE_BYTES__, cudaMemcpyDeviceToHost );
     mpui::MPUI_Send(session, h__Q.h, __MPUI_HOSTNAME__, __MPUI_DT__);
     #endif
   }
@@ -139,8 +166,11 @@ int main(int argc, char **argv)
   printf("%lf\n", cl_time);
 
   // only h__Q.h is necessary at this point.
-  cudaMemcpy( h__Q.__substates__ + substate_offset_size*9, d__substates__ + substate_offset_size*9, substate_offset_size * sizeof(double), cudaMemcpyDeviceToHost );
+  cudaMemcpy( h__Q.__substates__ + __Q_h__OFFSET__, d__substates__ + __Q_h__OFFSET__, __SUBSTATE_SIZE_BYTES__, cudaMemcpyDeviceToHost );
   
+  //
+  // GPU data structures free.
+  //
   cudaFree( d__substates__ );
   cudaFree( d__P           );
   cudaFree( d__minvar      );
