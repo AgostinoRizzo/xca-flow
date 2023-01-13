@@ -97,24 +97,44 @@ struct Substates
 // ----------------------------------------------------------------------------
 
 __host__ __device__
-void syncSubstatesPtrs(Substates &Q)
+void syncSubstatesPtrs(Substates &Q, bool substates_swap=false)
 {
   Q.ks               = Q.__substates__;
 
-  Q.teta             = Q.__substates__ + SIZE;
-  Q.teta_next        = Q.__substates__ + SIZE*2;
-  Q.moist_cont       = Q.__substates__ + SIZE*3;
-  Q.moist_cont_next  = Q.__substates__ + SIZE*4;
-  Q.psi              = Q.__substates__ + SIZE*5;
-  Q.psi_next         = Q.__substates__ + SIZE*6;
-  Q.k                = Q.__substates__ + SIZE*7;
-  Q.k_next           = Q.__substates__ + SIZE*8;
-  Q.h                = Q.__substates__ + SIZE*9;
-  Q.h_next           = Q.__substates__ + SIZE*10;
-  Q.dqdh             = Q.__substates__ + SIZE*11;
-  Q.dqdh_next        = Q.__substates__ + SIZE*12;
-  Q.convergence      = Q.__substates__ + SIZE*13;
-  Q.convergence_next = Q.__substates__ + SIZE*14;
+  if ( substates_swap )
+  {
+    Q.teta             = Q.__substates__ + SIZE*2;
+    Q.teta_next        = Q.__substates__ + SIZE;
+    Q.moist_cont       = Q.__substates__ + SIZE*4;
+    Q.moist_cont_next  = Q.__substates__ + SIZE*3;
+    Q.psi              = Q.__substates__ + SIZE*6;
+    Q.psi_next         = Q.__substates__ + SIZE*5;
+    Q.k                = Q.__substates__ + SIZE*8;
+    Q.k_next           = Q.__substates__ + SIZE*7;
+    Q.h                = Q.__substates__ + SIZE*10;
+    Q.h_next           = Q.__substates__ + SIZE*9;
+    Q.dqdh             = Q.__substates__ + SIZE*12;
+    Q.dqdh_next        = Q.__substates__ + SIZE*11;
+    Q.convergence      = Q.__substates__ + SIZE*14;
+    Q.convergence_next = Q.__substates__ + SIZE*13;
+  }
+  else
+  {
+    Q.teta             = Q.__substates__ + SIZE;
+    Q.teta_next        = Q.__substates__ + SIZE*2;
+    Q.moist_cont       = Q.__substates__ + SIZE*3;
+    Q.moist_cont_next  = Q.__substates__ + SIZE*4;
+    Q.psi              = Q.__substates__ + SIZE*5;
+    Q.psi_next         = Q.__substates__ + SIZE*6;
+    Q.k                = Q.__substates__ + SIZE*7;
+    Q.k_next           = Q.__substates__ + SIZE*8;
+    Q.h                = Q.__substates__ + SIZE*9;
+    Q.h_next           = Q.__substates__ + SIZE*10;
+    Q.dqdh             = Q.__substates__ + SIZE*11;
+    Q.dqdh_next        = Q.__substates__ + SIZE*12;
+    Q.convergence      = Q.__substates__ + SIZE*13;
+    Q.convergence_next = Q.__substates__ + SIZE*14;
+  }
 
   Q.F                = Q.__substates__ + SIZE*15;
 }

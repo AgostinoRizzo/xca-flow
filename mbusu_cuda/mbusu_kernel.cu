@@ -12,6 +12,18 @@ void updateSubstates( Substates &d__Q, int i, int j, int k )
   SET3D( d__Q.convergence, ROWS, COLS, i, j, k, GET3D(d__Q.convergence_next, ROWS, COLS, i, j, k) );
 }
 
+__device__
+void updateSubstatesReverse( Substates &d__Q, int i, int j, int k )
+{
+  SET3D( d__Q.dqdh_next,        ROWS, COLS, i, j, k, GET3D(d__Q.dqdh,        ROWS, COLS, i, j, k) );
+  SET3D( d__Q.psi_next,         ROWS, COLS, i, j, k, GET3D(d__Q.psi,         ROWS, COLS, i, j, k) );
+  SET3D( d__Q.k_next,           ROWS, COLS, i, j, k, GET3D(d__Q.k,           ROWS, COLS, i, j, k) );
+  SET3D( d__Q.h_next,           ROWS, COLS, i, j, k, GET3D(d__Q.h,           ROWS, COLS, i, j, k) );
+  SET3D( d__Q.teta_next,        ROWS, COLS, i, j, k, GET3D(d__Q.teta,        ROWS, COLS, i, j, k) );
+  SET3D( d__Q.moist_cont_next,  ROWS, COLS, i, j, k, GET3D(d__Q.moist_cont,  ROWS, COLS, i, j, k) );
+  SET3D( d__Q.convergence_next, ROWS, COLS, i, j, k, GET3D(d__Q.convergence, ROWS, COLS, i, j, k) );
+}
+
 // ----------------------------------------------------------------------------
 // CUDA KERNEL ROUTINES
 // ----------------------------------------------------------------------------
@@ -33,21 +45,24 @@ void updateSubstates( Substates &d__Q, int i, int j, int k )
   if ( zerothread )  /* thread 0 */                                        \
   {                                                                        \
     d__Q.__substates__ = d__substates__;                                   \
-    syncSubstatesPtrs( d__Q );                                             \
+    syncSubstatesPtrs( d__Q, substates_swap );                             \
   }                                                                        \
   __syncthreads();
 // ----------------------------------------------------------------------------
 
 __global__
-void update_substates_kernel( double *d__substates__ )
+void update_substates_kernel( double *d__substates__, bool substates_swap )
 {
   ____KERNEL_BLOCK_PREFACE____
 
-  updateSubstates( d__Q, i, j, k );
+  if ( i < MB_BOUNDS_i_start || i >= MB_BOUNDS_i_end ||
+       j < MB_BOUNDS_j_start || j >= MB_BOUNDS_j_end ||
+       k < MB_BOUNDS_k_start || k >= MB_BOUNDS_k_end )
+    updateSubstatesReverse( d__Q, i, j, k );
 }
 
 __global__
-void simul_init_kernel( double *d__substates__, Parameters *d__P )
+void simul_init_kernel( double *d__substates__, Parameters *d__P, bool substates_swap=false )
 {
   ____KERNEL_BLOCK_PREFACE____
 
@@ -55,7 +70,7 @@ void simul_init_kernel( double *d__substates__, Parameters *d__P )
 }
 
 __global__
-void reset_flows_kernel( double *d__substates__, Parameters *d__P )
+void reset_flows_kernel( double *d__substates__, Parameters *d__P, bool substates_swap )
 {
   ____KERNEL_BLOCK_PREFACE____
 
@@ -66,7 +81,7 @@ void reset_flows_kernel( double *d__substates__, Parameters *d__P )
 }
 
 __global__
-void compute_flows_kernel( double *d__substates__, Parameters *d__P )
+void compute_flows_kernel( double *d__substates__, Parameters *d__P, bool substates_swap )
 {
 #if defined(CUDA_VERSION_TILED_HALO)
 
@@ -84,7 +99,7 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P )
   extern __shared__ double s__Q_h[];
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q );
+  syncSubstatesPtrs( d__Q, substates_swap );
   
   if ( i_halo >= 0 && j_halo >= 0 && k_halo >= 0 &&
        i_halo < ROWS && j_halo < COLS && k_halo < SLICES )
@@ -115,7 +130,7 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P )
   extern __shared__ double s__Q_h[];
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q, SIZE );
+  syncSubstatesPtrs( d__Q, substates_swap );
 
   SET3D( s__Q_h, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.h, ROWS, COLS, i, j, k) );
   __syncthreads();
@@ -136,7 +151,7 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P )
 }
 
 __global__
-void mass_balance_kernel( double *d__substates__, Parameters *d__P )
+void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substates_swap )
 {
 #if defined(CUDA_VERSION_TILED_HALO)
 
@@ -156,7 +171,7 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P )
   double *s__Q_F = s__Q_kF + blockDim.x*blockDim.y*blockDim.z;
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q, SIZE );
+  syncSubstatesPtrs( d__Q, substates_swap );
   
   if ( i_halo >= 0 && j_halo >= 0 && k_halo >= 0 &&
        i_halo < ROWS && j_halo < COLS && k_halo < SLICES )
@@ -197,7 +212,7 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P )
   double *s__Q_F = s__Q_kF + blockDim.x*blockDim.y*blockDim.z;
 
   d__Q.__substates__ = d__substates__;
-  syncSubstatesPtrs( d__Q, SIZE );
+  syncSubstatesPtrs( d__Q, substates_swap );
 
   SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, ROWS, COLS, i, j, k) );
   for ( int adjc=0; adjc < ADJACENT_CELLS; ++adjc )
@@ -227,7 +242,7 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P )
 }
 
 __global__
-void simul_steering( double *d__convergence, int size, double *minvar )
+void simul_steering( double *d__convergence, int size, double *minvar, bool substates_swap )
 {
   const int t = threadIdx.x;
   const int i = blockDim.x*blockIdx.x + t;

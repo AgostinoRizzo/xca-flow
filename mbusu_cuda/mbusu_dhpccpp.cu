@@ -22,8 +22,8 @@ int main(int argc, char **argv)
   const int     blocksize_y     = atoi(argv[BLOCKSIZE_Y_ID]);
   const int     blocksize_z     = atoi(argv[BLOCKSIZE_Z_ID]);
 
-  Substates        h__Q;
-  Parameters       h__P;
+  Substates  h__Q;
+  Parameters h__P;
 
   const int substsize = allocSubstates(h__Q);
   readKs(h__Q.ks, input_ks_path);
@@ -80,10 +80,12 @@ int main(int argc, char **argv)
   //
   // Auxiliary local variables.
   //
-  int        reduction_size;
-  double    *d__reduction_buffer;
-  double     minVar;
-  cudaError  err;
+  bool          substates_swap = false;
+  int           reduction_size;
+  double       *d__reduction_buffer;
+  double        minVar;
+  unsigned int  minVarSize = sizeof(double);
+  cudaError     err;
 
   //
   // GPU data structures alloc+memcpy.
@@ -101,8 +103,8 @@ int main(int argc, char **argv)
   //
   // Apply the simulation init kernel to the whole domain
   //
-  simul_init_kernel      <<< grid_size, block_size >>>( d__substates__, d__P );
-  update_substates_kernel<<< grid_size, block_size >>>( d__substates__ );
+  simul_init_kernel <<< grid_size, block_size >>>( d__substates__, d__P );
+  substates_swap = true; // update substates
 
   //
   // simulation loop
@@ -119,24 +121,25 @@ int main(int argc, char **argv)
     // 3. apply the mass balance kernel to the domain bounded by mb_bounds
     // 4. simulation steering
     //
-    reset_flows_kernel      <<< grid_size, block_size >>>( d__substates__, d__P );
-    compute_flows_kernel    <<< grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, d__P );
-    mass_balance_kernel     <<< grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P );
-    update_substates_kernel <<< grid_size, block_size >>>( d__substates__ );
+    reset_flows_kernel      <<< grid_size, block_size >>>( d__substates__, d__P, substates_swap );
+    compute_flows_kernel    <<< grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, d__P, substates_swap );
+    mass_balance_kernel     <<< grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P, substates_swap );
+    update_substates_kernel <<< grid_size, block_size >>>( d__substates__, substates_swap );
+    substates_swap = !substates_swap; // update substates
 
     reduction_size = __SUBSTATE_SIZE__;
     d__reduction_buffer = d__substates__ + __Q_convergence_OFFSET__;
     do
     {
       steering_grid_size = ceil(reduction_size / (float)steering_block_size);
-      simul_steering<<< steering_grid_size, simul_steering_blkconfig.block_size, simul_steering_blkconfig.sharedmem_size >>>( d__reduction_buffer, reduction_size, d__minvar );
+      simul_steering<<< steering_grid_size, simul_steering_blkconfig.block_size, simul_steering_blkconfig.sharedmem_size >>>( d__reduction_buffer, reduction_size, d__minvar, substates_swap );
       
       d__reduction_buffer = d__minvar;
       reduction_size = steering_grid_size;
     }
     while( steering_grid_size > 1 );
 
-    cudaMemcpy( &minVar, d__minvar, sizeof(double), cudaMemcpyDeviceToHost );
+    cudaMemcpy( &minVar, d__minvar, minVarSize, cudaMemcpyDeviceToHost );
     
     if (minVar > 55.0)
       minVar = 55.0;
