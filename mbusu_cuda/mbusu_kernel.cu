@@ -24,9 +24,20 @@ void updateSubstatesReverse( Substates &d__Q, int i, int j, int k )
   SET3D( d__Q.convergence_next, ROWS, COLS, i, j, k, GET3D(d__Q.convergence, ROWS, COLS, i, j, k) );
 }
 
+
 // ----------------------------------------------------------------------------
-// CUDA KERNEL ROUTINES
+// slice limit parameters + check
 // ----------------------------------------------------------------------------
+#ifdef __MPI__
+  #define ____SLICE_LIMIT_PARAMS____ , unsigned int slice_start, unsigned int slice_end
+#else
+  #define ____SLICE_LIMIT_PARAMS____
+#endif
+#ifdef __MPI__
+  #define ____SLICE_LIMIT_CHECK____ if ( k < slice_start || k > slice_end ) return;
+#else
+  #define ____SLICE_LIMIT_CHECK____
+#endif
 
 // ----------------------------------------------------------------------------
 // common kernel block preface
@@ -50,10 +61,18 @@ void updateSubstatesReverse( Substates &d__Q, int i, int j, int k )
   __syncthreads();
 // ----------------------------------------------------------------------------
 
+
+
+// ----------------------------------------------------------------------------
+// CUDA KERNEL ROUTINES
+// ----------------------------------------------------------------------------
+
 __global__
-void update_substates_kernel( double *d__substates__, bool substates_swap )
+void update_substates_kernel( double *d__substates__, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   ____KERNEL_BLOCK_PREFACE____
+
+  ____SLICE_LIMIT_CHECK____
 
   if ( i < MB_BOUNDS_i_start || i >= MB_BOUNDS_i_end ||
        j < MB_BOUNDS_j_start || j >= MB_BOUNDS_j_end ||
@@ -70,9 +89,11 @@ void simul_init_kernel( double *d__substates__, Parameters *d__P, bool substates
 }
 
 __global__
-void reset_flows_kernel( double *d__substates__, Parameters *d__P, bool substates_swap )
+void reset_flows_kernel( double *d__substates__, Parameters *d__P, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   ____KERNEL_BLOCK_PREFACE____
+
+  ____SLICE_LIMIT_CHECK____
 
   //
   // Apply the reset flow kernel to the whole domain
@@ -81,7 +102,7 @@ void reset_flows_kernel( double *d__substates__, Parameters *d__P, bool substate
 }
 
 __global__
-void compute_flows_kernel( double *d__substates__, Parameters *d__P, bool substates_swap )
+void compute_flows_kernel( double *d__substates__, Parameters *d__P, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
 #if defined(CUDA_VERSION_TILED_HALO)
 
@@ -91,6 +112,9 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, bool substa
   const int      i = blockIdx.y*TILE_SIZE_Y + threadIdx.y;
   const int      j = blockIdx.x*TILE_SIZE_X + threadIdx.x;
   const int      k = blockIdx.z*TILE_SIZE_Z + threadIdx.z;
+
+  ____SLICE_LIMIT_CHECK____
+
   const int i_halo = i-1;
   const int j_halo = j-1;
   const int k_halo = k-1;
@@ -123,6 +147,8 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, bool substa
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
   const int k = blockIdx.z*blockDim.z + threadIdx.z;
 
+  ____SLICE_LIMIT_CHECK____
+
   if ( i >= ROWS || j >= COLS || k >= SLICES )
     return;
   
@@ -143,6 +169,9 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, bool substa
   
 #else
   ____KERNEL_BLOCK_PREFACE____
+
+  ____SLICE_LIMIT_CHECK____
+
   //
   // Apply the flow computation kernel to the whole domain
   //
@@ -151,7 +180,7 @@ void compute_flows_kernel( double *d__substates__, Parameters *d__P, bool substa
 }
 
 __global__
-void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substates_swap )
+void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
 #if defined(CUDA_VERSION_TILED_HALO)
 
@@ -161,6 +190,9 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substat
   const int      i = blockIdx.y*TILE_SIZE_Y + threadIdx.y;
   const int      j = blockIdx.x*TILE_SIZE_X + threadIdx.x;
   const int      k = blockIdx.z*TILE_SIZE_Z + threadIdx.z;
+
+  ____SLICE_LIMIT_CHECK____
+
   const int i_halo = i-1;
   const int j_halo = j-1;
   const int k_halo = k-1;
@@ -203,6 +235,8 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substat
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
   const int k = blockIdx.z*blockDim.z + threadIdx.z;
 
+  ____SLICE_LIMIT_CHECK____
+
   if ( i >= ROWS || j >= COLS || k >= SLICES )
     return;
   
@@ -230,6 +264,8 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substat
 
 #else
   ____KERNEL_BLOCK_PREFACE____
+
+  ____SLICE_LIMIT_CHECK____
 
   //
   // Apply the mass balance kernel to the domain bounded by mb_bounds 
