@@ -23,7 +23,8 @@
 #define ROWS   100
 #define COLS   100
 #define SLICES  50
-#define SIZE   (ROWS*COLS*SLICES)
+#define SIZE       (ROWS*COLS*SLICES)
+#define SLICE_SIZE (ROWS*COLS)
 #define MB_BOUNDS_i_start 1
 #define MB_BOUNDS_i_end   (ROWS-1)
 #define MB_BOUNDS_j_start 1
@@ -92,8 +93,9 @@ struct Substates
 // ----------------------------------------------------------------------------
 #define __SUBSTATE_SIZE__             SIZE
 #define __SUBSTATE_SIZE_BYTES__       SIZE * sizeof(double)
-#define __Q_h__OFFSET__           (SIZE*9)
-#define __Q_convergence_OFFSET__ (SIZE*13)
+#define __Q_h__OFFSET__               (SIZE*9)
+#define __Q_convergence_OFFSET__      (SIZE*13)
+#define __Q_convergence_next_OFFSET__ (SIZE*14)
 // ----------------------------------------------------------------------------
 
 __host__ __device__

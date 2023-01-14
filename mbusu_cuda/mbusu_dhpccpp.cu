@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     substates_swap = !substates_swap; // update substates
 
     reduction_size = __SUBSTATE_SIZE__;
-    d__reduction_buffer = d__substates__ + __Q_convergence_OFFSET__;
+    d__reduction_buffer = d__substates__ + ( substates_swap ? __Q_convergence_next_OFFSET__ : __Q_convergence_OFFSET__ );
     do
     {
       steering_grid_size = ceil(reduction_size / (float)steering_block_size);
