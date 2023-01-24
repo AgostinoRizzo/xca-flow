@@ -33,9 +33,9 @@ SRC_MULTI = mbusu_dhpccpp_multi.cu
 BIN_MULTI = mbusu_dhpccpp_multi.o
 EXE_MULTI = mbusu_dhpccpp_multi
 
-#default:$(EXE)
+default:$(EXE)
 #default:$(EXE_MPUI)
-default:$(EXE_MULTI)
+#default:$(EXE_MULTI)
 
 
 $(EXE): $(BIN)
@@ -62,7 +62,7 @@ $(BIN_MULTI): $(SRC_MULTI)
 ###############################################################################
 # EXECUTION                                                                   #
 ###############################################################################
-
+#nvprof --metrics all --export-profile nvprof_basic.out 
 run:
 	./$(EXE) $(INPUT_KS_PATH) $(SIMULATION_TIME) $(OUTPUT_PREFIX) $(BLOCK_SIZE_0) $(BLOCK_SIZE_1) $(BLOCK_SIZE_2)
 

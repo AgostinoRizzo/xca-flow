@@ -13,6 +13,7 @@
 // ----------------------------------------------------------------------------
 // MBUSU-CUDA implementation
 // ----------------------------------------------------------------------------
+//#define CUDA_VERSION_BASIC
 //#define CUDA_VERSION_TILED_HALO
 //#define CUDA_VERSION_TILED_NO_HALO
 // ----------------------------------------------------------------------------
@@ -49,6 +50,7 @@
 // ----------------------------------------------------------------------------
 #define ADJACENT_CELLS 6
 #define VON_NEUMANN_NEIGHBORHOOD_3D_CELLS 7
+#define MIN_VAR 55.0 //237.528
 // ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
@@ -150,24 +152,25 @@ int allocSubstates(Substates &Q)
 
 void deleteSubstates(Substates& Q) { free(Q.__substates__); }
 
+#define P_YOUT (COLS-1)
+#define P_YIN 0
+#define P_XE (ROWS-1)
+#define P_XW 0
+#define P_ZSUP (SLICES-1)
+#define P_ZFONDO 0
+
+#define P_h_init 734
+#define P_tetas 0.348
+#define P_tetar 0.095467
+#define P_alfa 0.034733333
+#define P_n 1.729
+#define P_rain 0.000023148148
+#define P_psi_zero (-0.1)
+#define P_ss 0.0001
+#define P_lato 30.0
+
 struct Parameters
 {
-  int YOUT;
-  int YIN;
-  int XE;
-  int XW;
-  int ZFONDO;
-  int ZSUP;
-
-  double h_init;
-  double tetas;
-  double tetar;
-  double alfa;
-  double n;
-  double rain;
-  double psi_zero;
-  double ss;
-  double lato;
   double delta_t;
   double delta_t_cum;
   double delta_t_cum_prec;
@@ -176,22 +179,6 @@ struct Parameters
 
 void initParameters(Parameters& P, double simulation_time)
 {
-  P.YOUT = COLS-1;
-  P.YIN = 0;
-  P.XE = ROWS-1;
-  P.XW = 0;
-  P.ZSUP = SLICES-1;
-  P.ZFONDO = 0;
-
-  P.h_init = 734;
-  P.tetas = 0.348;
-  P.tetar = 0.095467;
-  P.alfa = 0.034733333;
-  P.n = 1.729;
-  P.rain = 0.000023148148;
-  P.psi_zero = -0.1;
-  P.ss = 0.0001;
-  P.lato = 30.0;	
   P.simulation_time = simulation_time;
   P.delta_t = 10.0;
   P.delta_t_cum = 0.0;
