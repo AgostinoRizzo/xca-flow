@@ -11,11 +11,11 @@
 #elif defined(CUDA_VERSION_TILED_NO_HALO)
   #define GET3D_SHARED( M, s__M, i, j, k, s__rows, s__cols, s__slices, s__i, s__j, s__k ) \
     (( s__i < 0 || s__j < 0 || s__k < 0 || s__i >= s__rows || s__j >= s__cols || s__k >= s__slices ) \
-           ? GET3D(M, ROWS, COLS, i, j, k) \
-           : GET3D(s__M, s__rows, s__cols, s__i, s__j, s__k))
-  #define GET3D_Q_h(xi, xj, xk) (GET3D_SHARED(Q.h, s__Q_h, i+xi, j+xj, k+xk, s__rows, s__cols, s__slices, s__i+xi, s__j+xj, s__k+xk ))
+           ? GET3D(M, ROWS, COLS, (i), (j), (k)) \
+           : GET3D(s__M, s__rows, s__cols, (s__i), (s__j), (s__k)))
+  #define GET3D_Q_h(xi, xj, xk) (GET3D_SHARED(Q.h, s__Q_h, i+(xi), j+(xj), k+(xk), s__rows, s__cols, s__slices, s__i+(xi), s__j+(xj), s__k+(xk) ))
   #define GET3D_Q_k(xi, xj, xk) (GET3D_SHARED(Q.k, s__Q_k, i+(xi), j+(xj), k+(xk), s__rows, s__cols, s__slices, s__i+(xi), s__j+(xj), s__k+(xk) ))
-  #define BUF_GET3D_Q_F(n, xi, xj, xk) (BUF_GET3D(Q.F, ROWS, COLS, SLICES, n, i+xi, j+xj, k+xk))
+  #define BUF_GET3D_Q_F(n, xi, xj, xk) (BUF_GET3D(Q.F, ROWS, COLS, SLICES, n, i+(xi), j+(xj), k+(xk)))
 #else
   #define GET3D_Q_h(xi, xj, xk) (GET3D(Q.h, ROWS, COLS, i+(xi), j+(xj), k+(xk)))
   #define GET3D_Q_k(xi, xj, xk) (GET3D(Q.k, ROWS, COLS, i+(xi), j+(xj), k+(xk)))
@@ -149,7 +149,7 @@ void compute_flows(int i, int j, int k, Substates &Q)
   int k_inv = (SLICES-1) - k;
   double h = GET3D_Q_h(0, 0, 0);
   double Q_h_temp;
-
+  
   if ( k_inv > P_ZFONDO && h > (Q_h_temp=GET3D_Q_h(Xi_6, Xj_6, Xk_6)) )
     BUF_SET3D(Q.F, ROWS, COLS, SLICES, 0, i, j, k, h - Q_h_temp);
 
