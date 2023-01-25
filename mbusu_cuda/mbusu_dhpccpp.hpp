@@ -94,7 +94,7 @@ struct Substates
 // Substates size and offsets
 // ----------------------------------------------------------------------------
 #define __SUBSTATE_SIZE__             SIZE
-#define __SUBSTATE_SIZE_BYTES__       SIZE * sizeof(double)
+#define __SUBSTATE_SIZE_BYTES__       (SIZE * sizeof(double))
 #define __Q_h__OFFSET__               (SIZE*9)
 #define __Q_convergence_OFFSET__      (SIZE*13)
 #define __Q_convergence_next_OFFSET__ (SIZE*14)

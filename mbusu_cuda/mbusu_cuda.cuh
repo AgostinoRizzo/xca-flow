@@ -170,7 +170,7 @@ MbusuCuda::~MbusuCuda()
 
 bool MbusuCuda::simul_init()
 {
-	simul_init_kernel <<< grid_size, block_size >>>( d__substates__, d__Q );
+	simul_init_kernel <<< grid_size, block_size >>>( d__substates__ );
 	substates_swap = true; // update substates
 	return next_step;
 }
@@ -187,10 +187,10 @@ bool MbusuCuda::simul_step()
     // 3. apply the mass balance kernel to the domain bounded by mb_bounds
     // 4. simulation steering
     //
-    reset_flows_kernel      <<< grid_size, block_size >>>( d__substates__, d__P, d__Q, substates_swap );
-    compute_flows_kernel    <<< compute_flows_blkconfig.grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, d__Q, substates_swap );
-    mass_balance_kernel     <<< mass_balance_blkconfig.grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P, d__Q, substates_swap );
-    update_substates_kernel <<< grid_size, block_size >>>( d__substates__, d__Q, substates_swap );
+    reset_flows_kernel      <<< grid_size, block_size >>>( d__substates__, d__P, substates_swap );
+    compute_flows_kernel    <<< compute_flows_blkconfig.grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, substates_swap );
+    mass_balance_kernel     <<< mass_balance_blkconfig.grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P, substates_swap );
+    update_substates_kernel <<< grid_size, block_size >>>( d__substates__, substates_swap );
     //substates_swap_kernel <<< 1, 1 >>> ( d__Q );
     substates_swap = !substates_swap; // update substates
 
@@ -263,14 +263,13 @@ void MbusuCuda::get_substate( double *substate, unsigned int substate_offset )
 
 bool MbusuCudaPiped::simul_init()
 {
-	simul_init_kernel <<< grid_size, block_size >>>( d__substates__, d__Q );
+	simul_init_kernel <<< grid_size, block_size >>>( d__substates__ );
 	substates_swap = true; // update substates
 
-	reset_flows_kernel      <<< grid_size, block_size, 0 >>>( d__substates__, d__P, d__Q, substates_swap );
+	reset_flows_kernel <<< grid_size, block_size, 0 >>>( d__substates__, d__P, substates_swap );
 	return next_step;
 }
 
-#ifndef __MPI__
 bool MbusuCudaPiped::simul_step()
 {
 	//
@@ -280,13 +279,13 @@ bool MbusuCudaPiped::simul_step()
     // 3. apply the mass balance kernel to the domain bounded by mb_bounds
     // 4. simulation steering
     //
-    compute_flows_kernel    <<< compute_flows_blkconfig.grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, d__Q, substates_swap );
-	mass_balance_kernel     <<< mass_balance_blkconfig.grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P, d__Q, substates_swap );
-    update_substates_kernel <<< grid_size, block_size >>>( d__substates__, d__Q, substates_swap );
+    compute_flows_kernel    <<< compute_flows_blkconfig.grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, substates_swap );
+	mass_balance_kernel     <<< mass_balance_blkconfig.grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P, substates_swap );
+    update_substates_kernel <<< grid_size, block_size >>>( d__substates__, substates_swap );
     substates_swap = !substates_swap; // update substates
 
 	cudaDeviceSynchronize();
-	reset_flows_kernel      <<< grid_size, block_size, 0, pipeStream >>>( d__substates__, d__P, d__Q, substates_swap );
+	reset_flows_kernel      <<< grid_size, block_size, 0, pipeStream >>>( d__substates__, d__P, substates_swap );
     
     reduction_size = __SUBSTATE_SIZE__;
     d__reduction_buffer = d__substates__ + ( substates_swap ? __Q_convergence_next_OFFSET__ : __Q_convergence_OFFSET__ );
@@ -318,6 +317,5 @@ bool MbusuCudaPiped::simul_step()
 
 	return next_step;
 }
-#endif
 
 #endif

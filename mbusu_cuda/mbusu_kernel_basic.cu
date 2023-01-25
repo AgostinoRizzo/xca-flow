@@ -49,7 +49,7 @@ void updateSubstatesReverse( Substates &d__Q, int i, int j, int k )
 // ----------------------------------------------------------------------------
 
 __global__
-void update_substates_kernel( double *d__substates__, Substates *__d__Q, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
+void update_substates_kernel( double *d__substates__, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   const int i = blockIdx.y*blockDim.y + threadIdx.y;
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
@@ -73,7 +73,7 @@ void update_substates_kernel( double *d__substates__, Substates *__d__Q, bool su
 
 
 __global__
-void simul_init_kernel( double *d__substates__, Substates *__d__Q )
+void simul_init_kernel( double *d__substates__ )
 {
   const int i = blockIdx.y*blockDim.y + threadIdx.y;                       
   const int j = blockIdx.x*blockDim.x + threadIdx.x;                       
@@ -90,7 +90,7 @@ void simul_init_kernel( double *d__substates__, Substates *__d__Q )
 }
 
 __global__
-void reset_flows_kernel( double *d__substates__, Parameters *d__P, Substates *__d__Q, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
+void reset_flows_kernel( double *d__substates__, Parameters *d__P, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   const int i = blockIdx.y*blockDim.y + threadIdx.y;
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
@@ -116,7 +116,7 @@ void reset_flows_kernel( double *d__substates__, Parameters *d__P, Substates *__
 #ifdef CUDA_VERSION_BASIC
 
 __global__
-void compute_flows_kernel( double *d__substates__, Substates *__d__Q, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
+void compute_flows_kernel( double *d__substates__, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   const int i = blockIdx.y*blockDim.y + threadIdx.y;
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
@@ -138,7 +138,7 @@ void compute_flows_kernel( double *d__substates__, Substates *__d__Q, bool subst
 }
 
 __global__
-void mass_balance_kernel( double *d__substates__, Parameters *d__P, Substates *__d__Q, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
+void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   const int i = blockIdx.y*blockDim.y + threadIdx.y + 1;                       
   const int j = blockIdx.x*blockDim.x + threadIdx.x + 1;                       
@@ -162,7 +162,11 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, Substates *_
 #endif
 
 __global__
-void simul_steering( double *d__convergence, int size, double *minvar, bool substates_swap, Parameters *d__P, bool *d__next_step )
+void simul_steering( double *d__convergence, int size, double *minvar, bool substates_swap, Parameters *d__P
+#ifndef __MPI__
+, bool *d__next_step
+#endif
+)
 {
   const int t = threadIdx.x;
   const int i = blockDim.x*blockIdx.x + t;
@@ -181,6 +185,7 @@ void simul_steering( double *d__convergence, int size, double *minvar, bool subs
   // write the result of this block to the global memory.
   if ( t == 0 )
   {
+#ifndef __MPI__
     if ( gridDim.x == 1 )
     {
       double minVar = s__minvar[0];
@@ -193,6 +198,7 @@ void simul_steering( double *d__convergence, int size, double *minvar, bool subs
       (*d__next_step) = !(d__P->delta_t_cum >= d__P->simulation_time && d__P->delta_t_cum_prec <= d__P->simulation_time);
     }
     else
+#endif
       minvar[blockIdx.x] = s__minvar[0];
   }
 }

@@ -10,7 +10,7 @@
 // ----------------------------------------------------------------------------
 
 __global__
-void compute_flows_kernel( double *d__substates__, Substates *__d__Q, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
+void compute_flows_kernel( double *d__substates__, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   const int i = blockIdx.y*blockDim.y + threadIdx.y;
   const int j = blockIdx.x*blockDim.x + threadIdx.x;
@@ -39,7 +39,7 @@ void compute_flows_kernel( double *d__substates__, Substates *__d__Q, bool subst
 
 
 __global__
-void mass_balance_kernel( double *d__substates__, Parameters *d__P, Substates *__d__Q, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
+void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substates_swap ____SLICE_LIMIT_PARAMS____ )
 {
   const int i = blockIdx.y*blockDim.y + threadIdx.y + 1;
   const int j = blockIdx.x*blockDim.x + threadIdx.x + 1;

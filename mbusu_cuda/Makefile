@@ -56,7 +56,7 @@ $(EXE_MULTI): $(BIN_MULTI)
 	$(CPPC) $^ -L/usr/lib/openmpi/ -lmpi -o $@ -O3 -g -G
 
 $(BIN_MULTI): $(SRC_MULTI)
-	$(CPPC) $^ -D ROWS=$(ROWS) -D COLS=$(COLS) -D SLICES=$(SLICES) -D $(BUILD) -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
+	$(CPPC) $^ -D ROWS=$(ROWS) -D COLS=$(COLS) -D SLICES=$(SLICES) -D $(BUILD) -D __MPI__ -c $(REDUCTION_FLAG) -O3 $(CUDA_GPU_ARCH) $(CUDA_GPU_CODE) #-g -G
 
 
 ###############################################################################

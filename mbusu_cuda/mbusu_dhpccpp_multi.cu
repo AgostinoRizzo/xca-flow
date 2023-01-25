@@ -1,6 +1,8 @@
 #define __MPI__
 #include "mbusu_dhpccpp.hpp"
-#include "mbusu_kernel.cu"
+#include "mbusu_kernel_basic.cu"
+#include "mbusu_kernel_halo.cu"
+#include "mbusu_kernel_nohalo.cu"
 #include <mpi.h>
 
 #define LOCAL_ROWS        ROWS
@@ -118,6 +120,7 @@ int main(int argc, char **argv)
   unsigned int  reduction_buffer_local_offset = pid == 0 ? 0 : LOCAL_SIZE;
   double        minVar, other_minVar;
   unsigned int  minVarSize = sizeof(double);
+  int           steps = 0;
   cudaError     err;
 
   //
@@ -141,7 +144,7 @@ int main(int argc, char **argv)
   // Apply the simulation init kernel to the whole domain
   //
 
-  simul_init_kernel <<< grid_size, block_size >>>( d__substates__, d__P );
+  simul_init_kernel <<< grid_size, block_size >>>( d__substates__ );
   substates_swap = true; // update substates
 
   //
@@ -165,7 +168,7 @@ int main(int argc, char **argv)
     // Compute boundaries
     //
     reset_flows_kernel      <<< grid_size, block_size, 0, stream0 >>>( d__substates__, d__P, substates_swap, boundary_slice, boundary_slice );
-    compute_flows_kernel    <<< grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size, stream0 >>>( d__substates__, d__P, substates_swap, boundary_slice, boundary_slice );
+    compute_flows_kernel    <<< grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size, stream0 >>>( d__substates__, substates_swap, boundary_slice, boundary_slice );
     mass_balance_kernel     <<< grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size, stream0 >>>( d__substates__, d__P, substates_swap, boundary_slice, boundary_slice );
     update_substates_kernel <<< grid_size, block_size, 0, stream0 >>>( d__substates__, substates_swap, boundary_slice, boundary_slice );
 
@@ -175,7 +178,7 @@ int main(int argc, char **argv)
     // Compute Inner chunk
     //
     reset_flows_kernel      <<< grid_size, block_size, 0, stream1 >>>( d__substates__, d__P, substates_swap, inner_slices_start, inner_slices_end );
-    compute_flows_kernel    <<< grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size, stream1 >>>( d__substates__, d__P, substates_swap, inner_slices_start, inner_slices_end );
+    compute_flows_kernel    <<< grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size, stream1 >>>( d__substates__, substates_swap, inner_slices_start, inner_slices_end );
     mass_balance_kernel     <<< grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size, stream1 >>>( d__substates__, d__P, substates_swap, inner_slices_start, inner_slices_end );
     update_substates_kernel <<< grid_size, block_size, 0, stream1 >>>( d__substates__, substates_swap, inner_slices_start, inner_slices_end );
     substates_swap = !substates_swap; // update substates
@@ -186,7 +189,7 @@ int main(int argc, char **argv)
     do
     {
       steering_grid_size = ceil(reduction_size / (float)steering_block_size);
-      simul_steering<<< steering_grid_size, simul_steering_blkconfig.block_size, simul_steering_blkconfig.sharedmem_size, stream1 >>>( d__reduction_buffer, reduction_size, d__minvar, substates_swap );
+      simul_steering<<< steering_grid_size, simul_steering_blkconfig.block_size, simul_steering_blkconfig.sharedmem_size, stream1 >>>( d__reduction_buffer, reduction_size, d__minvar, substates_swap, d__P );
       
       d__reduction_buffer = d__minvar;
       reduction_size = steering_grid_size;
@@ -199,19 +202,29 @@ int main(int argc, char **argv)
     syncSubstatesPtrs( d__Q, !substates_swap );
     cudaMemcpyAsync( h__Q_next_boundary.k_next, d__Q.k_next + boundary_slice * SLICE_SIZE, slice_bytes, cudaMemcpyDeviceToHost, stream0 );
     cudaMemcpyAsync( h__Q_next_boundary.h_next, d__Q.h_next + boundary_slice * SLICE_SIZE, slice_bytes, cudaMemcpyDeviceToHost, stream0 );
-    cudaMemcpyAsync( h__Q_next_boundary.F, d__Q.F + boundary_slice * SLICE_SIZE, slice_bytes, cudaMemcpyDeviceToHost, stream0 );
+    cudaMemcpyAsync( h__Q_next_boundary.F,
+                     d__Q.F + (pid * SIZE) + (boundary_slice * SLICE_SIZE),  // 0 flows go down, 1 flows go up
+                     slice_bytes, cudaMemcpyDeviceToHost, stream0 ); 
     cudaStreamSynchronize( stream0 );
+    
     MPI_Sendrecv( h__Q_next_boundary.k_next, SLICE_SIZE, MPI_DOUBLE, other_pid, 0, h__Q_next_halo.k_next, SLICE_SIZE, MPI_DOUBLE, other_pid, 0, MPI_COMM_WORLD, &status );
     MPI_Sendrecv( h__Q_next_boundary.h_next, SLICE_SIZE, MPI_DOUBLE, other_pid, 0, h__Q_next_halo.h_next, SLICE_SIZE, MPI_DOUBLE, other_pid, 0, MPI_COMM_WORLD, &status );
     MPI_Sendrecv( h__Q_next_boundary.F,      SLICE_SIZE, MPI_DOUBLE, other_pid, 0, h__Q_next_halo.F,      SLICE_SIZE, MPI_DOUBLE, other_pid, 0, MPI_COMM_WORLD, &status );
+    
     cudaMemcpyAsync( d__Q.k_next + halo_slice * SLICE_SIZE, h__Q_next_halo.k_next, slice_bytes, cudaMemcpyHostToDevice, stream0 );
+    cudaMemcpyAsync( d__Q.h_next + halo_slice * SLICE_SIZE, h__Q_next_halo.h_next, slice_bytes, cudaMemcpyHostToDevice, stream0 );
+    cudaMemcpyAsync( d__Q.F      + (other_pid * SIZE) + (halo_slice * SLICE_SIZE), h__Q_next_halo.F,  // 0 flows go down, 1 flows go up
+                     slice_bytes, cudaMemcpyHostToDevice, stream0 );
 
+    //
+    // Get computed minVar from device.
+    //
     cudaMemcpy( &minVar, d__minvar, minVarSize, cudaMemcpyDeviceToHost );
     MPI_Sendrecv( &minVar, 1, MPI_DOUBLE, other_pid, 0, &other_minVar, 1, MPI_DOUBLE, other_pid, 0, MPI_COMM_WORLD, &status );
     if ( other_minVar < minVar ) minVar = other_minVar;
     
-    if (minVar > 55.0)
-      minVar = 55.0;
+    if (minVar > MIN_VAR)
+      minVar = MIN_VAR;
     
     h__P.delta_t           = minVar;
     h__P.delta_t_cum_prec  = h__P.delta_t_cum;
@@ -221,7 +234,8 @@ int main(int argc, char **argv)
     // block
     //
     cudaDeviceSynchronize();
-    
+
+#ifdef __CUDA_DEBUG__
     //
     // Manage CUDA errors.
     //
@@ -231,11 +245,13 @@ int main(int argc, char **argv)
       printf("%s in %s at line %d\n", cudaGetErrorString(err), __FILE__, __LINE__);
       break;
     }
+#endif
+
+    ++steps;
   }
 
   double cl_time = static_cast<double>(cl_timer.getTimeMilliseconds()) / 1000.0;
-  //printf("Elapsed time: %lf [s]\n", cl_time);
-  if ( is_data_server ) printf("%lf\n", cl_time);
+  if ( is_data_server ) { printf("%lf\n", cl_time); printf("Steps: %d\n", steps); }
 
   // only h__Q.h is necessary at this point.
   cudaMemcpy( h__Q.__substates__ + __Q_h__OFFSET__, d__substates__ + __Q_h__OFFSET__, __SUBSTATE_SIZE_BYTES__, cudaMemcpyDeviceToHost );
@@ -263,6 +279,8 @@ int main(int argc, char **argv)
   cudaFreeHost( h__Q_next_halo.k_next );
   cudaFreeHost( h__Q_next_halo.h_next );
   cudaFreeHost( h__Q_next_halo.F );
+  cudaStreamDestroy( stream0 );
+  cudaStreamDestroy( stream1 );
 
   MPI_Finalize();
 

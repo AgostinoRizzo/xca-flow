@@ -55,9 +55,6 @@ int main(int argc, char **argv)
   util::Timer cl_timer;
   while( next_step )
   {
-    
-    
-
     //
     // Apply the whole simulation cycle
     //
