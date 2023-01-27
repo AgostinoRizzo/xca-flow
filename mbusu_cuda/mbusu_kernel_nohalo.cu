@@ -65,20 +65,8 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substat
   #define LAST_I (ROWS-1)
   #define LAST_J (COLS-1)
   #define LAST_K (SLICES-1)
-  //if ( i >= MB_BOUNDS_i_start && i < MB_BOUNDS_i_end &&
-  //     j >= MB_BOUNDS_j_start && j < MB_BOUNDS_j_end &&
-  //     k >= MB_BOUNDS_k_start && k < MB_BOUNDS_k_end )
-  // include if ( //i < ROWS && j < COLS && k < SLICES &&
-       //!( (BLOCK_I==BLOCK_J==0 || (BLOCK_I==0&&BLOCK_J==LAST_BLOCK_J) || (BLOCK_I==LAST_BLOCK_I&&BLOCK_J==0) || (BLOCK_I==LAST_BLOCK_I&&BLOCK_J==LAST_BLOCK_J)) ) ) /* &&
-       //   (BLOCK_K==0||BLOCK_K==LAST_BLOCK_K) ) &&
-       // include !( (i==0&&j==0) || (i==0&&j==LAST_J) || (i==LAST_I&&j==0) || (i==LAST_I&&j==LAST_J) ) )
-       //   (k==0||k==LAST_K) ) )*/
-  {
-    SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, ROWS, COLS, i, j, k) );
-    //for ( int adjc=0; adjc < ADJACENT_CELLS; ++adjc )
-    //  if ( !((k==0 && adjc==5) || (k==SLICES-1 && adjc!=1)) )
-    //  BUF_SET3D( s__Q_F, blockDim.y, blockDim.x, blockDim.z, adjc, threadIdx.y, threadIdx.x, threadIdx.z, BUF_GET3D(d__Q.F, ROWS, COLS, SLICES, adjc, i, j, k) );
-  }
+  
+  SET3D( s__Q_k, blockDim.y, blockDim.x, threadIdx.y, threadIdx.x, threadIdx.z, GET3D(d__Q.k, ROWS, COLS, i, j, k) );  
   __syncthreads();
 
   //

@@ -178,8 +178,6 @@ bool MbusuCuda::simul_init()
 #ifndef __MPI__
 bool MbusuCuda::simul_step()
 {
-	/*cudaMemcpy( d__P, h__P, sizeof(Parameters), cudaMemcpyHostToDevice );*/
-
 	//
     // Apply the whole simulation cycle:
     // 1. apply the reset flow kernel to the whole domain
@@ -207,33 +205,6 @@ bool MbusuCuda::simul_step()
     while( steering_grid_size > 1 );
 
     cudaMemcpy( &next_step, d__next_step, next_step_size, cudaMemcpyDeviceToHost );
-
-	/*reduction_size = __SUBSTATE_SIZE__;
-    d__reduction_buffer = d__substates__ + ( substates_swap ? __Q_convergence_next_OFFSET__ : __Q_convergence_OFFSET__ );
-    //do
-    {
-      steering_grid_size = ceil(reduction_size / (float)steering_block_size);
-      simul_steering<<< steering_grid_size, simul_steering_blkconfig.block_size, simul_steering_blkconfig.sharedmem_size >>>( d__reduction_buffer, reduction_size, d__minvar, substates_swap, d__P, d__next_step );
-      
-      d__reduction_buffer = d__minvar;
-      reduction_size = steering_grid_size;
-    }
-    //while( steering_grid_size > 1 );
-
-	cudaMemcpy( h__minvar, d__minvar, h__minvar_size * sizeof(double), cudaMemcpyDeviceToHost );
-	
-	double minVar = h__minvar[0];
-    for ( int __mv_i=1; __mv_i < h__minvar_size; ++__mv_i )
-		if ( h__minvar[__mv_i] < minVar ) minVar = h__minvar[__mv_i];
-    
-    if (minVar > MIN_VAR)
-      minVar = MIN_VAR;
-    
-    h__P->delta_t           = minVar;
-    h__P->delta_t_cum_prec  = h__P->delta_t_cum;
-    h__P->delta_t_cum      += h__P->delta_t;
-
-	next_step = !(h__P->delta_t_cum >= h__P->simulation_time && h__P->delta_t_cum_prec <= h__P->simulation_time);*/
 
 #ifdef __CUDA_DEBUG__
 	//
@@ -267,6 +238,8 @@ bool MbusuCudaPiped::simul_init()
 	substates_swap = true; // update substates
 
 	reset_flows_kernel <<< grid_size, block_size, 0 >>>( d__substates__, d__P, substates_swap );
+	compute_flows_kernel    <<< compute_flows_blkconfig.grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, substates_swap );
+	
 	return next_step;
 }
 
@@ -279,14 +252,14 @@ bool MbusuCudaPiped::simul_step()
     // 3. apply the mass balance kernel to the domain bounded by mb_bounds
     // 4. simulation steering
     //
-    compute_flows_kernel    <<< compute_flows_blkconfig.grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size >>>( d__substates__, substates_swap );
-	mass_balance_kernel     <<< mass_balance_blkconfig.grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P, substates_swap );
+    mass_balance_kernel     <<< mass_balance_blkconfig.grid_size, mass_balance_blkconfig.block_size, mass_balance_blkconfig.sharedmem_size >>>( d__substates__, d__P, substates_swap );
     update_substates_kernel <<< grid_size, block_size >>>( d__substates__, substates_swap );
     substates_swap = !substates_swap; // update substates
 
 	cudaDeviceSynchronize();
 	reset_flows_kernel      <<< grid_size, block_size, 0, pipeStream >>>( d__substates__, d__P, substates_swap );
-    
+    compute_flows_kernel    <<< compute_flows_blkconfig.grid_size, compute_flows_blkconfig.block_size, compute_flows_blkconfig.sharedmem_size, pipeStream >>>( d__substates__, substates_swap );
+
     reduction_size = __SUBSTATE_SIZE__;
     d__reduction_buffer = d__substates__ + ( substates_swap ? __Q_convergence_next_OFFSET__ : __Q_convergence_OFFSET__ );
     do

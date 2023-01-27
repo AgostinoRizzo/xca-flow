@@ -116,9 +116,6 @@ void mass_balance_kernel( double *d__substates__, Parameters *d__P, bool substat
   const int shmem_j = threadIdx.x + 1;
   const int shmem_k = threadIdx.z + 1;
 
-  //const bool loadmem = !( (i==0&&j==0) || (i==0&&j==LAST_J) || (i==LAST_I&&j==0) || (i==LAST_I&&j==LAST_J) );
-  //if ( loadmem )
-
   SET3D( s__Q_k, SHMEM_ROWS, SHMEM_COLS, shmem_i, shmem_j, shmem_k, GET3D(d__Q.k, ROWS, COLS, i, j, k) );
   
   if ( BLOCK_I == 0 && i > 0 )                 SET3D( s__Q_k, SHMEM_ROWS, SHMEM_COLS, shmem_i-1, shmem_j, shmem_k, GET3D(d__Q.k, ROWS, COLS, i-1, j, k) );

@@ -5,6 +5,11 @@
 #include <time.h>
 #include <math.h>
 #include "util.hpp"
+
+#define __MPUI__
+#define __MPUI_HUB__
+#include "../mpui/mpui.h"
+
 // ----------------------------------------------------------------------------
 // I/O parameters used to index argv[]
 // ----------------------------------------------------------------------------
@@ -450,6 +455,14 @@ int main(int argc, char **argv)
   initParameters(P, simulation_time, r, c, s); 
   initDomainBoundaries(mb_bounds, 1, r-1, 1, c-1, 0, s);
 
+  #ifdef __MPUI__
+  mpui::MPUI_WSize wsize = {c, r, s};
+  mpui::MPUI_Session *session;
+  mpui::MPUI_Init(mpui::MPUI_Mode::HUB, wsize, session);
+  mpui::MPUI_Hub_setRange( -730.0, 5600.0 );
+  mpui::MPUI_Hub_filter( -734.0f );
+  #endif
+
   // Apply the simulation init kernel to the whole domain
 #pragma omp parallel for
     for (int i = 0; i < r; i++)
@@ -502,12 +515,21 @@ int main(int argc, char **argv)
     P.delta_t = minVar;
     P.delta_t_cum_prec = P.delta_t_cum;
     P.delta_t_cum += P.delta_t;
+
+    #ifdef __MPUI__
+    //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    mpui::MPUI_Recv_local(session, Q.h);
+    #endif
   }
 
   double cl_time = static_cast<double>(cl_timer.getTimeMilliseconds()) / 1000.0;
   //printf("Elapsed time: %lf [s]\n", cl_time);
   printf("%lf\n", cl_time);
 
+  #ifdef __MPUI__
+  mpui::MPUI_Finalize(session);
+  #endif
+  
   std::string s_path = (std::string)output_prefix + "h_LAST_simulation_time_" + util::converttostringint(simulation_time) + "s.txt";
   saveFile(Q.h, r, c, s, s_path);
 
