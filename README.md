@@ -5,6 +5,20 @@ The project consists in the multi-GPU parallelization and performance assessment
 
 The project was realized in the context of the *Massively Parallel Programming on GPUs* course during the master's degree in Artificial Intelligence and Computer Science. The project also features the Message-Passing User Interface (MPUI), an MPI-inspired library for interactive visualization.
 
+*   Initial configuration of the three-dimensional domain.
+    Colors represent the saturated hydraulic conductivity.
+    The domain extends 30 meters long and wide, with a depth of 15 meters, resulting in a grid of 100x100x50 with a cubic cells side of 0.3 meters.
+    ![Initial Domain Configuration](./figures/initial_config.png "Initial Domain Configuration")
+
+*   Simulation result from the initial configuration shown above.
+    <table>
+        <tr>
+            <td><img alt="Simulation Result 1" title="Simulation Result 1" src="./figures/simul_result_1.png"></td>
+            <td><img alt="Simulation Result 2" title="Simulation Result 2" src="./figures/simul_result_2.png"></td>
+            <td><img alt="Simulation Result 3" title="Simulation Result 3" src="./figures/simul_result_3.png"></td>
+        </tr>
+    </table>
+
 
 ### Multi-GPU Parallelization
 
@@ -269,12 +283,10 @@ MPI-inspired library to interactively visualize the computation of concurrent pr
 *   **Source** process: dedicated for scientific computation (typically running on a **workstation**)
 *   **Hub** process: dedicated for the visualization of data computed by source processes (typically running on a **PC/laptop**)
 
+![MPUI Process Schema](./figures/mpui_net.svg "MPUI Process Schema")
+
 The source and hub processes communicate through message-passing implemented using **TCP-sockets** (hence even remotely).
 The visualization of the hub processes is implemented via the [**OpenGL**](https://www.opengl.org/) library supporting the *3D computational domains*.
-
-#### MPUI Process Schema
-
-![MPUI Process Schema](./figures/mpui_net.svg "MPUI Process Schema")
 
 #### MPUI Send vs Recv
 
